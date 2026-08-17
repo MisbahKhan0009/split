@@ -59,7 +59,7 @@ The frontend is intentionally usable without a configured backend so product flo
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
+venv\Scripts\activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py seed_demo
