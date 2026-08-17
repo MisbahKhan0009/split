@@ -1,6 +1,7 @@
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from .models import ChatMessage, GroupMembership, UserProfile
 
 User = get_user_model()
@@ -27,10 +28,15 @@ class GroupChatConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_send(self.room_group_name, {"type": "chat.typing", "user": await self.user_payload(), "is_typing": bool(content.get("is_typing", True))})
             return
         if event_type == "reaction":
-            await self.channel_layer.group_send(self.room_group_name, {"type": "chat.reaction", "message_id": content.get("message_id"), "emoji": content.get("emoji", "👍"), "user": await self.user_payload()})
+            message_id = content.get("message_id")
+            emoji = content.get("emoji", "👍")
+            await self.record_reaction(message_id, emoji)
+            await self.channel_layer.group_send(self.room_group_name, {"type": "chat.reaction", "message_id": message_id, "emoji": emoji, "user": await self.user_payload()})
             return
         if event_type == "read":
-            await self.channel_layer.group_send(self.room_group_name, {"type": "chat.read", "message_id": content.get("message_id"), "user_id": self.user.id})
+            message_id = content.get("message_id")
+            await self.record_read(message_id)
+            await self.channel_layer.group_send(self.room_group_name, {"type": "chat.read", "message_id": message_id, "user_id": self.user.id})
             return
         body = str(content.get("body", "")).strip()
         attachments = content.get("attachments", [])
@@ -54,6 +60,21 @@ class GroupChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def is_member(self, user_id, group_id):
         return GroupMembership.objects.filter(user_id=user_id, group_id=group_id, is_active=True).exists()
+
+    @database_sync_to_async
+    def record_reaction(self, message_id, emoji):
+        message = ChatMessage.objects.filter(id=message_id, group_id=self.group_id).first()
+        if not message:
+            return
+        reactions = [reaction for reaction in message.reactions if reaction.get("emoji") != emoji]
+        existing = next((reaction for reaction in message.reactions if reaction.get("emoji") == emoji), None)
+        reactions.append({"emoji": emoji, "count": (existing.get("count", 0) if existing else 0) + 1, "user_id": self.user.id})
+        message.reactions = reactions
+        message.save(update_fields=["reactions", "updated_at"])
+
+    @database_sync_to_async
+    def record_read(self, message_id):
+        ChatMessage.objects.filter(id=message_id, group_id=self.group_id).update(read_at=timezone.now(), updated_at=timezone.now())
 
     @database_sync_to_async
     def user_payload(self):
