@@ -1,7 +1,7 @@
 
 ## Expense flow check
 
-Opening `Add expense` displayed a focused modal with title, amount, category, split-mode controls, participant selection, receipt toggle, cancel, and save actions. Filling `Canal tour tickets` and `3200` updated the live preview to `kr 800` per person for four participants, confirming the equal-split interaction is wired correctly.
+Opening `Add expense` displayed a focused modal with title, amount, category, split-mode controls, participant selection, receipt toggle, cancel, and save actions. Filling `Canal tour tickets` and `3200` updated the live preview to `৳ 800` per person for four participants, confirming the equal-split interaction is wired correctly.
 
 ## Ledger and planning checks
 
@@ -10,3 +10,9 @@ Saving the sample expense navigated to the ledger, increased the visible expense
 ## Chat check
 
 The group chat view rendered the seeded conversation, contextual items, and composer. Sending `I’m in — add it to the trip budget` appended a new right-aligned message and displayed the toast `Message sent to the group`.
+
+## BDT and Messenger update
+
+The landing page now uses Bangladeshi taka (`৳`) in the hero demo, social proof, settlement visual, and pricing. The workspace uses Bangladeshi casual Gen Z demo names: Rafi, Tisha, Nabil, Mahi, and Shuvo. The overview shows BDT values and the profile account is Rafi.
+
+The Messages screen now renders an inbox rail for the Dhaka trip group plus private chat entries, a group-people list, richer message bubbles, reactions, reply affordances, delivery state, a theme control, shared media/file counters, emoji picker, GIF action, file/photo/video attachment controls, and a profile action area. The live chat copy explicitly identifies the WebSocket-ready realtime messaging flow.

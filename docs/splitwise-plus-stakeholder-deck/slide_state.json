@@ -1,0 +1,114 @@
+{
+  "project_info": {
+    "title": "SplitWise+",
+    "created": 1786908985.134,
+    "last_updated": 1786942393.097,
+    "total_slides": 10
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "the_shift",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "product_identity",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "product_experience",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "feature_set",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "expense_intelligence",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "smart_settlement",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "architecture",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "collaboration_flywheel",
+      "state": "edited",
+      "pageNum": 9
+    },
+    {
+      "id": "close",
+      "state": "edited",
+      "pageNum": 10
+    }
+  ],
+  "outline": [
+    {
+      "id": "cover",
+      "title": "SplitWise+",
+      "summary": "Cover slide with stakeholder subtitle, student 1 and student 2 ID fields, and the landing-page screenshot as the hero visual.",
+      "image_plan": "/home/ubuntu/screenshots/localhost_2026-08-16_19-21-25_5414.webp - Landing page screenshot cropped for cover slide visual"
+    },
+    {
+      "id": "the_shift",
+      "title": "The shift",
+      "summary": "Show how shared money becomes messy when expenses, conversation, and decisions are scattered."
+    },
+    {
+      "id": "product_identity",
+      "title": "One group. One workspace.",
+      "summary": "Visualize the group workspace as a connected orbit of expenses, balances, chat, receipts, plans, and budgets."
+    },
+    {
+      "id": "product_experience",
+      "title": "Every number is an action",
+      "summary": "Use the workspace screenshot with three callouts for balance, spend, and activity actions.",
+      "image_plan": "/home/ubuntu/screenshots/localhost_2026-08-16_19-21-41_5975.webp - Workspace screenshot used as hero image with numbered callouts"
+    },
+    {
+      "id": "feature_set",
+      "title": "The first release closes the loop",
+      "summary": "Present the MVP feature set as a 2×3 icon grid with concise descriptors."
+    },
+    {
+      "id": "expense_intelligence",
+      "title": "From receipt to shared understanding",
+      "summary": "Show the expense workflow from add to split to confirm to track with a stylized receipt card."
+    },
+    {
+      "id": "smart_settlement",
+      "title": "Fewer payments. More moving on.",
+      "summary": "Compare tangled transfers before optimization with a simplified three-payment network."
+    },
+    {
+      "id": "architecture",
+      "title": "Predictable where it matters",
+      "summary": "Show the three-layer React, Django, and data architecture with REST and WebSocket boundaries."
+    },
+    {
+      "id": "collaboration_flywheel",
+      "title": "A better group memory",
+      "summary": "Show the Talk, Decide, Spend, Understand, Settle collaboration flywheel with trust at the center."
+    },
+    {
+      "id": "close",
+      "title": "Make shared money feel simple",
+      "summary": "Close with FAST, QUIET, COLLABORATIVE, the landing screenshot, and an MVP validation next step."
+    }
+  ]
+}

@@ -1,5 +1,14 @@
 export type View = "overview" | "expenses" | "settle" | "plan" | "chat";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
+export type ChatKind = "group" | "direct";
+export type AttachmentKind = "image" | "video" | "file" | "gif";
+
+export interface Profile {
+  bio: string;
+  status: string;
+  avatarUrl?: string;
+  lastSeen?: string;
+}
 
 export interface Member {
   id: string;
@@ -7,6 +16,7 @@ export interface Member {
   initials: string;
   color: string;
   online?: boolean;
+  profile: Profile;
 }
 
 export interface Expense {
@@ -31,14 +41,46 @@ export interface ActivityItem {
   color: string;
 }
 
+export interface ChatAttachment {
+  id: string;
+  kind: AttachmentKind;
+  name: string;
+  url: string;
+  size?: string;
+  thumbnail?: string;
+}
+
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  reacted?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   member: string;
+  senderId: string;
   initials: string;
   message: string;
   time: string;
   color: string;
   mine?: boolean;
+  kind?: ChatKind;
+  attachments?: ChatAttachment[];
+  reactions?: ChatReaction[];
+  replyTo?: string;
+  read?: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  kind: ChatKind;
+  title: string;
+  subtitle: string;
+  memberId?: string;
+  unread: number;
+  lastMessage: string;
+  accent: string;
 }
 
 export interface Group {
@@ -49,4 +91,5 @@ export interface Group {
   members: number;
   total: number;
   accent: string;
+  currency: "BDT";
 }

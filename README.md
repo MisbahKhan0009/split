@@ -2,26 +2,38 @@
 
 > Shared money, without the shared headache.
 
-SplitWise+ is a collaborative financial workspace for groups that share money, plans, responsibilities, and decisions. This repository contains the first production milestone described in `SplitWise_Plus_PRD_v2.md`: a responsive liquid-glass frontend experience plus a modular Django REST and Channels backend foundation.
+SplitWise+ is a BDT-first collaborative financial workspace for groups that share money, plans, responsibilities, and decisions. The repository contains a responsive liquid-glass frontend plus a modular Django REST and Channels backend foundation.
 
 ## What is implemented
 
-The frontend includes a marketing landing page with an interactive product demo, a group workspace, overview dashboard, expense ledger with search and category filters, equal/exact/percentage split flow, receipt attachment state, balance breakdown, optimized settlement actions, itinerary and task planning, live-style group chat, contextual notifications, command palette, theme switching, responsive mobile navigation, loading/empty/error-aware interaction patterns, and local optimistic feedback.
+The frontend includes a marketing landing page, group workspace, overview dashboard, expense ledger with search and category filters, equal/exact/percentage split flow, receipt state, balance breakdown, optimized settlement actions, itinerary planning, notifications, command palette, theme switching, responsive navigation, and local optimistic feedback.
 
-The backend provides Django models for groups, memberships, expenses, participants, settlements, and chat messages. REST endpoints are available for groups, expense CRUD, settlements, settlement confirmation, group summaries, and JWT token issuance. The WebSocket contract is `ws://localhost:8000/ws/groups/{group_id}/chat/`, with membership checks and persisted messages.
+The default currency is **Bangladeshi taka (`৳`, code `BDT`)** across the landing page, demo data, expenses, balances, settlement views, planning copy, and backend serializers. Demo identities use only casual Bangladeshi Gen Z names: **Rafi, Tisha, Nabil, Mahi, and Shuvo**.
+
+The Messages workspace now behaves like a modern Messenger/WhatsApp-style inbox. It includes a group thread, private-message threads, member profile drawers, profile-picture update controls, emoji selection, GIF sending, image/video/file attachment controls, attachment previews, message reactions, reply context, typing indicators, delivery state, read-state hooks, theme switching, shared-media metadata, and WebSocket-ready group/direct delivery.
+
+## Architecture
+
+| Layer | Responsibility |
+| --- | --- |
+| Frontend | React + TypeScript + Vite, liquid-glass responsive UI, BDT formatting, inbox conversations, media previews, reactions, profiles, and WebSocket clients. |
+| Backend | Django, Django REST Framework, Channels, JWT/session authentication, group membership checks, profile APIs, chat history, direct messages, rich attachments, reactions, read receipts, and typing/realtime event handlers. |
+| Data | SQLite by default for development, PostgreSQL through `DATABASE_URL` in deployment, Django media storage for receipts and avatars, and JSON fields for attachment/reaction metadata. |
 
 ## Repository structure
 
 ```text
 splitwise-plus/
-├── frontend/                 # React + TypeScript + Vite application
-│   ├── src/App.tsx           # Product shell and interactive MVP flows
-│   ├── src/styles.css        # Liquid-glass design system and responsive UI
-│   └── package.json
-├── backend/                  # Django + DRF + Channels service
-│   ├── apps/core/models.py   # Group finance domain model
-│   ├── apps/core/api.py      # Serializers and REST viewsets
-│   ├── apps/core/consumers.py# Group chat WebSocket consumer
+├── frontend/
+│   ├── src/App.tsx           # landing page, workspace, inbox, chat, profiles
+│   ├── src/lib/api.ts        # REST and group/direct WebSocket helpers
+│   ├── src/types/index.ts    # shared frontend contracts
+│   └── src/styles.css        # liquid-glass and Messenger UI system
+├── backend/
+│   ├── apps/core/models.py   # BDT groups, profiles, expenses, messages
+│   ├── apps/core/api.py      # REST serializers and viewsets
+│   ├── apps/core/consumers.py# group/direct Channels consumers
+│   ├── apps/core/routing.py  # WebSocket routes
 │   └── requirements.txt
 └── docs/
 ```
@@ -32,9 +44,10 @@ splitwise-plus/
 cd frontend
 pnpm install
 pnpm run dev
+pnpm run build
 ```
 
-The frontend is intentionally usable without a configured backend so product flows can be reviewed immediately. Backend integration is isolated behind the REST and WebSocket contracts above.
+The frontend is intentionally usable without a configured backend so product flows can be reviewed immediately. Backend integration is isolated behind REST and WebSocket contracts.
 
 ## Run the backend
 
@@ -49,26 +62,31 @@ python manage.py runserver
 
 Set `DATABASE_URL` to a PostgreSQL connection string in production. Without it, development uses SQLite. Set `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, and `DJANGO_DEBUG` through the environment; secrets are not committed.
 
-## API outline
+## API and realtime contracts
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/api/v1/auth/token/` | Issue JWT access and refresh tokens |
-| POST | `/api/v1/auth/token/refresh/` | Refresh an access token |
-| GET/POST | `/api/v1/groups/` | List or create groups |
-| GET | `/api/v1/groups/{id}/summary/` | Read group spend summary |
-| GET/POST/PATCH/DELETE | `/api/v1/expenses/` | Manage shared expenses |
-| GET/POST/PATCH/DELETE | `/api/v1/settlements/` | Manage settlement requests |
-| POST | `/api/v1/settlements/{id}/confirm/` | Confirm a settlement |
-| WebSocket | `/ws/groups/{group_id}/chat/` | Real-time group chat |
+| GET/POST | `/api/v1/groups/` | List or create BDT groups. New groups default to `BDT` and `৳`. |
+| GET | `/api/v1/groups/{id}/summary/` | Read spend summary with currency metadata. |
+| GET/POST/PATCH/DELETE | `/api/v1/expenses/` | Manage shared expenses and participant splits. |
+| GET/POST/PATCH/DELETE | `/api/v1/settlements/` | Manage settlement requests and BDT balances. |
+| GET/PATCH | `/api/v1/profiles/me/` | Read or update the current profile, avatar, bio, status, and theme. |
+| GET | `/api/v1/messages/?group={id}` | Read group chat history. |
+| GET | `/api/v1/messages/?recipient={user_id}` | Read a private-message thread. |
+| POST | `/api/v1/messages/{id}/react/` | Add a reaction. |
+| POST | `/api/v1/messages/{id}/mark_read/` | Mark a message as read. |
+| WebSocket | `/ws/groups/{group_id}/chat/` | Group delivery, typing, reactions, and read events. |
+| WebSocket | `/ws/users/{user_id}/chat/` | Direct-message delivery between two users. |
 
-Expense validation rejects non-positive amounts and ensures exact/equal participant shares reconcile to the transaction total. All group-scoped querysets filter through active membership.
+Chat WebSocket messages accept `body`, `attachments`, and optional `reply_to`. Production deployment should replace the in-memory channel layer with Redis and connect object storage for durable media uploads.
 
 ## Verification
 
 ```bash
 cd frontend && pnpm run build
-cd ../backend && python manage.py test
+cd ../backend && python3 manage.py check
+cd ../backend && python3 manage.py test
+git diff --check
 ```
 
-The UI uses semantic controls, visible focusable actions, reduced-motion support, mobile navigation, actionable empty states, and non-blocking toast feedback. Financial operations are modeled as REST mutations; only chat uses Channels/WebSockets, matching the PRD architecture.
+The browser smoke notes in `docs/browser-smoke-test.md` cover the BDT landing page, updated identity, workspace, expense flow, and Messenger-style messaging screen.

@@ -10,11 +10,23 @@ class TimeStamped(models.Model):
         abstract = True
 
 
+class UserProfile(TimeStamped):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    avatar = models.ImageField(upload_to="avatars/%Y/%m/", blank=True, null=True)
+    bio = models.CharField(max_length=240, blank=True)
+    status = models.CharField(max_length=80, default="Available")
+    theme = models.CharField(max_length=32, default="default")
+
+    def __str__(self):
+        return f"{self.user.username} profile"
+
+
 class Group(TimeStamped):
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True)
     emoji = models.CharField(max_length=8, default="✦")
-    currency = models.CharField(max_length=3, default="DKK")
+    currency = models.CharField(max_length=3, default="BDT")
+    currency_symbol = models.CharField(max_length=4, default="৳")
     description = models.TextField(blank=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_groups")
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="GroupMembership", related_name="shared_groups")
@@ -81,7 +93,20 @@ class Settlement(TimeStamped):
 
 
 class ChatMessage(TimeStamped):
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="chat_messages")
-    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    body = models.TextField(max_length=2000)
+    class Kind(models.TextChoices):
+        GROUP = "group", "Group"
+        DIRECT = "direct", "Direct"
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="chat_messages", null=True, blank=True)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_chat_messages")
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_chat_messages", null=True, blank=True)
+    kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.GROUP)
+    body = models.TextField(max_length=2000, blank=True)
+    attachments = models.JSONField(default=list, blank=True)
+    reactions = models.JSONField(default=list, blank=True)
+    reply_to = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="replies")
     related_expense = models.ForeignKey(Expense, on_delete=models.SET_NULL, null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
