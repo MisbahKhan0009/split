@@ -47,3 +47,20 @@ Next, the browser will sign out of Tisha’s account, sign in as `rafi_accept_20
 A fresh account, `mahi_dashboard_2026`, was created through the visible React signup form. The account was not assigned to any group. After correcting the dashboard aggregation’s settlement status value and restarting Django, the live browser showed the sidebar label **Dashboard**, the signed-in user `Mahi Khan`, and the empty state: **No groups yet.** The UI explicitly explained that new users are not automatically added to groups and offered **Create your first group**.
 
 The initial browser attempt exposed a backend 500 caused by using a nonexistent `Settlement.Status.PENDING`; this was corrected to the model’s real `Settlement.Status.REQUESTED` value, and the browser recheck passed.
+
+## Production-presentable cleanup verification — 2026-08-17
+
+Removed preview-workspace entry points, seeded authenticated groups/expenses/activity/chat, hard-coded sidebar badges, static notifications, fake online/member counts, and the `Make the group more useful` preview-oriented heading. The public landing page now uses product-oriented copy without fake group names, balances, people, or historical usage metrics.
+
+Browser verification after the final rebuild:
+
+- Dashboard rendered the real Mahi Circle group and live BDT totals from Django.
+- Expenses rendered `0` real expenses with a truthful empty state.
+- Group plans rendered no events and no polls because none exist in the backend.
+- Messages rendered one real online member, one real group, zero messages, zero shared media, and zero files.
+- Connected workspace controls remained available and displayed live backend counts.
+- No preview, seeded, dummy, or hard-coded activity copy appeared in the authenticated workspace.
+
+The final frontend build, Django checks, Django tests, connected HTTP smoke test, and `git diff --check` passed.
+
+The authenticated workspace now treats backend state as authoritative. When data is absent, the UI explains what is missing and how to create it instead of inventing records. The marketing landing page remains intentionally illustrative as product communication, but no longer presents fictional people, group balances, or historical usage metrics as real product data.
