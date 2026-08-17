@@ -64,3 +64,13 @@ Browser verification after the final rebuild:
 The final frontend build, Django checks, Django tests, connected HTTP smoke test, and `git diff --check` passed.
 
 The authenticated workspace now treats backend state as authoritative. When data is absent, the UI explains what is missing and how to create it instead of inventing records. The marketing landing page remains intentionally illustrative as product communication, but no longer presents fictional people, group balances, or historical usage metrics as real product data.
+
+## Functional Plan page verification — 2026-08-17
+
+The Plan page was rebuilt around real backend mutations rather than toast-only actions. From the live browser, the Mahi Circle account created the event `Mahi Circle dinner` for 1 September 2026 at Dhanmondi with a BDT 2,400 budget. The event appeared in the Shared calendar with a real RSVP action.
+
+A real poll, `Where should the group eat next?`, was published with the persisted options Dhanmondi, Banani, and Gulshan. Selecting Dhanmondi changed the visible result from zero votes to one vote and displayed the `Vote recorded.` confirmation.
+
+A recurring expense, `Monthly Wi-Fi`, was scheduled for ৳1,200 monthly with a next run date of 25 August 2026. The Plan page displayed the saved schedule and a real `Generate now` action. Clicking it created an actual expense in the group ledger, changed shared spend to ৳1,200 and one expense, advanced the next run date, and displayed `Recurring expense generated in the ledger.`
+
+The Plan page now provides functional creation forms for events, polls, and recurring expenses; real poll voting; event RSVP toggling; recurring-expense generation; backend refresh after every mutation; and truthful empty states when a group has no plans.
