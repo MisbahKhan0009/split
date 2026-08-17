@@ -7,6 +7,14 @@ const REFRESH_TOKEN_KEY = "splitwise_plus_refresh_token";
 
 export type AuthUser = { id: number; username: string; first_name: string; last_name: string; email: string; display_name: string };
 export type AuthResponse = { access: string; refresh: string; user: AuthUser };
+export type ProfileDTO = { name: string; initials: string; avatar: string | null; bio: string; status: string; theme: string; updated_at: string };
+export type GroupMemberDTO = { user_id: number; name: string; initials: string; role: string; profile: ProfileDTO };
+export type GroupDTO = { id: number; name: string; emoji: string; member_count: number; members_detail: GroupMemberDTO[] };
+export type MessageAttachmentDTO = { id: string; kind: "image" | "video" | "file" | "gif"; name: string; url: string; size?: number | string; content_type?: string; thumbnail?: string };
+export type MessageReactionDTO = { emoji: string; count: number; reacted: boolean; user_ids?: number[]; legacy_count?: number };
+export type MessageDTO = { id: number; group: number | null; author: number; author_name: string; author_initials: string; recipient: number | null; recipient_name: string | null; kind: "group" | "direct"; body: string; attachments: MessageAttachmentDTO[]; reactions: MessageReactionDTO[]; reply_to: number | null; reply_preview: { id: number; author_name: string; body: string } | null; read_at: string | null; created_at: string };
+export type ProfileUpdate = Partial<Pick<ProfileDTO, "bio" | "status" | "theme">> | FormData;
+export type ChatEvent = { event: "connected" | "message" | "typing" | "reaction" | "read" | "error"; message?: MessageDTO; user?: { id: number; name: string; initials: string; avatar?: string | null }; is_typing?: boolean; user_id?: number; errors?: unknown };
 export type GroupSummary = { group: string; currency: { code: "BDT"; symbol: "৳" }; total_spend: string; expense_count: number; member_count: number; category_totals: { category: string; total: string }[] };
 export type SettlementPlan = { currency: { code: "BDT"; symbol: "৳" }; transfers: { from_user: number; to_user: number; from_name: string; to_name: string; amount: string }[] };
 export type Budget = { id: number; group: number; name: string; category: string; amount: string; spent: string; percent: number; currency: { code: "BDT"; symbol: "৳" }; period: string; starts_on: string; is_active: boolean };
@@ -47,8 +55,8 @@ export const api = {
   signup: (payload: { username: string; password: string; password_confirm: string; first_name: string; last_name: string; email?: string }) => request<AuthResponse>("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
   signin: (payload: { username: string; password: string }) => request<AuthResponse>("/auth/token/", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<AuthUser>("/auth/me/"),
-  groups: () => request<unknown[]>("/groups/"),
-  createGroup: (payload: { name: string; slug: string; emoji?: string; description?: string }) => request<unknown>("/groups/", { method: "POST", body: JSON.stringify(payload) }),
+  groups: () => request<GroupDTO[]>("/groups/"),
+  createGroup: (payload: { name: string; slug: string; emoji?: string; description?: string }) => request<GroupDTO>("/groups/", { method: "POST", body: JSON.stringify(payload) }),
   directoryUsers: (search = "") => request<DirectoryUser[]>(`/directory/users/${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   invitations: () => request<GroupInvitation[]>("/invitations/"),
   createInvitation: (payload: { group: number; username: string }) => request<GroupInvitation>("/invitations/", { method: "POST", body: JSON.stringify(payload) }),
@@ -77,25 +85,52 @@ export const api = {
   events: (groupId?: string | number) => request<GroupEvent[]>(`/events/${groupId ? `?group=${groupId}` : ""}`),
   createEvent: (payload: unknown) => request<GroupEvent>("/events/", { method: "POST", body: JSON.stringify(payload) }),
   rsvpEvent: (id: string | number) => request<GroupEvent>(`/events/${id}/rsvp/`, { method: "POST", body: JSON.stringify({}) }),
-  profile: () => request<unknown>("/profiles/me/"),
-  updateProfile: (payload: FormData | unknown) => request<unknown>("/profiles/me/", { method: "PATCH", body: payload instanceof FormData ? payload : JSON.stringify(payload) }),
-  groupMessages: (groupId: string | number) => request<unknown[]>(`/messages/?group=${groupId}`),
-  directMessages: (userId: string | number) => request<unknown[]>(`/messages/?recipient=${userId}`),
-  sendMessage: (payload: unknown) => request<unknown>("/messages/", { method: "POST", body: JSON.stringify(payload) }),
-  reactMessage: (id: string | number, emoji: string) => request<unknown>(`/messages/${id}/react/`, { method: "POST", body: JSON.stringify({ emoji }) }),
-  markMessageRead: (id: string | number) => request<unknown>(`/messages/${id}/mark_read/`, { method: "POST", body: JSON.stringify({}) }),
+  profile: () => request<ProfileDTO>("/profiles/me/"),
+  updateProfile: (payload: ProfileUpdate) => request<ProfileDTO>("/profiles/me/", { method: "PATCH", body: payload instanceof FormData ? payload : JSON.stringify(payload) }),
+  groupMessages: (groupId: string | number) => request<MessageDTO[]>(`/messages/?group=${groupId}`),
+  directMessages: (userId: string | number) => request<MessageDTO[]>(`/messages/?recipient=${userId}`),
+  sendMessage: (payload: { group?: number; recipient?: number; kind: "group" | "direct"; body: string; attachments?: MessageAttachmentDTO[]; reply_to?: number }) => request<MessageDTO>("/messages/", { method: "POST", body: JSON.stringify(payload) }),
+  uploadMessageAttachment: (file: globalThis.File, target: { group?: number; recipient?: number }) => {
+    const body = new FormData();
+    body.append("file", file);
+    if (target.group) body.append("group", String(target.group));
+    if (target.recipient) body.append("recipient", String(target.recipient));
+    return request<MessageAttachmentDTO>("/messages/upload/", { method: "POST", body });
+  },
+  reactMessage: (id: string | number, emoji: string) => request<MessageDTO>(`/messages/${id}/react/`, { method: "POST", body: JSON.stringify({ emoji }) }),
+  markMessageRead: (id: string | number) => request<MessageDTO>(`/messages/${id}/mark_read/`, { method: "POST", body: JSON.stringify({}) }),
 };
 
-export function connectToGroupChat(groupId: string | number, onMessage: (message: unknown) => void): WebSocket {
-  const base = import.meta.env.VITE_WS_BASE_URL ?? window.location.origin.replace(/^http/, "ws");
-  const socket = new WebSocket(`${base}/ws/groups/${groupId}/chat/`);
-  socket.addEventListener("message", (event) => onMessage(JSON.parse(event.data)));
-  return socket;
+export type ChatConnection = { socket: WebSocket; send: (payload: Record<string, unknown>) => boolean; close: () => void };
+
+function websocketBase(): string {
+  const explicit = import.meta.env.VITE_WS_BASE_URL as string | undefined;
+  if (explicit) return explicit.replace(/\/$/, "");
+  const apiUrl = new URL(API_BASE, window.location.origin);
+  apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+  apiUrl.pathname = "";
+  apiUrl.search = "";
+  apiUrl.hash = "";
+  return apiUrl.toString().replace(/\/$/, "");
 }
 
-export function connectToDirectChat(userId: string | number, onMessage: (message: unknown) => void): WebSocket {
-  const base = import.meta.env.VITE_WS_BASE_URL ?? window.location.origin.replace(/^http/, "ws");
-  const socket = new WebSocket(`${base}/ws/users/${userId}/chat/`);
-  socket.addEventListener("message", (event) => onMessage(JSON.parse(event.data)));
-  return socket;
+function connect(path: string, onEvent: (event: ChatEvent) => void): ChatConnection {
+  const token = getAccessToken();
+  const url = `${websocketBase()}${path}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  const socket = new WebSocket(url);
+  socket.addEventListener("message", (event) => {
+    try { onEvent(JSON.parse(event.data) as ChatEvent); } catch { onEvent({ event: "error", errors: "Invalid realtime payload" }); }
+  });
+  return {
+    socket,
+    send: (payload) => {
+      if (socket.readyState !== WebSocket.OPEN) return false;
+      socket.send(JSON.stringify(payload));
+      return true;
+    },
+    close: () => socket.close(),
+  };
 }
+
+export function connectToGroupChat(groupId: string | number, onEvent: (event: ChatEvent) => void) { return connect(`/ws/groups/${groupId}/chat/`, onEvent); }
+export function connectToDirectChat(userId: string | number, onEvent: (event: ChatEvent) => void) { return connect(`/ws/users/${userId}/chat/`, onEvent); }

@@ -6,6 +6,7 @@ export type AttachmentKind = "image" | "video" | "file" | "gif";
 export interface Profile {
   bio: string;
   status: string;
+  theme?: string;
   avatarUrl?: string;
   lastSeen?: string;
 }
@@ -48,7 +49,8 @@ export interface ChatAttachment {
   kind: AttachmentKind;
   name: string;
   url: string;
-  size?: string;
+  size?: string | number;
+  contentType?: string;
   thumbnail?: string;
 }
 
@@ -56,6 +58,7 @@ export interface ChatReaction {
   emoji: string;
   count: number;
   reacted?: boolean;
+  userIds?: number[];
 }
 
 export interface ChatMessage {
@@ -71,6 +74,7 @@ export interface ChatMessage {
   attachments?: ChatAttachment[];
   reactions?: ChatReaction[];
   replyTo?: string;
+  replyPreview?: { id: string; authorName: string; body: string };
   read?: boolean;
 }
 
@@ -85,6 +89,14 @@ export interface Conversation {
   accent: string;
 }
 
+export interface GroupMember {
+  user_id: number;
+  name: string;
+  initials: string;
+  role: string;
+  profile?: { bio: string; status: string; theme?: string; avatar?: string | null; updated_at?: string };
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -94,5 +106,5 @@ export interface Group {
   total: number;
   accent: string;
   currency: "BDT";
-  members_detail?: { user_id: number; name: string; initials: string; role: string }[];
+  members_detail?: GroupMember[];
 }

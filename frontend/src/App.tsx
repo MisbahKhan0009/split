@@ -6,7 +6,7 @@ import {
   Video, WalletCards, X, Zap, Smile, Palette, UserRound, Download, Play, File, Reply,
 } from "lucide-react";
 import type { ActivityItem, AttachmentKind, ChatAttachment, ChatMessage, Conversation, Expense, Group, Member, View } from "./types";
-import { api, clearSession, connectToDirectChat, connectToGroupChat, getAccessToken, saveSession, type AuthUser } from "./lib/api";
+import { api, clearSession, connectToDirectChat, connectToGroupChat, getAccessToken, saveSession, type AuthUser, type ChatConnection, type GroupMemberDTO, type MessageDTO } from "./lib/api";
 
 const money = (value: number) => `৳ ${value.toLocaleString("en-BD")}`;
 
@@ -44,8 +44,39 @@ const initialChat: ChatMessage[] = [
   { id: "3", senderId: "nabil", member: "Nabil", initials: "NB", message: "I'm in. Add it to the trip budget?", time: "10:35", color: "#99b8ff", reactions: [{ emoji: "🔥", count: 2 }] },
 ];
 
+const memberColors = ["#b7f36b", "#f7bf6d", "#99b8ff", "#e7a8ff", "#8dd8ff", "#ffb1d5"];
+const memberFromDTO = (member: GroupMemberDTO, index: number): Member => ({
+  id: String(member.user_id),
+  name: member.name,
+  initials: member.initials,
+  color: memberColors[index % memberColors.length],
+  profile: {
+    bio: member.profile?.bio || "No bio added yet.",
+    status: member.profile?.status || "Available",
+    theme: member.profile?.theme || "default",
+    avatarUrl: member.profile?.avatar || undefined,
+  },
+});
+const normalizeMessage = (row: MessageDTO, currentUserId?: number): ChatMessage => ({
+  id: String(row.id),
+  senderId: String(row.author),
+  member: row.author_name,
+  initials: row.author_initials,
+  message: row.body,
+  time: new Date(row.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  color: memberColors[row.author % memberColors.length],
+  mine: row.author === currentUserId,
+  kind: row.kind,
+  attachments: (row.attachments || []).map((attachment) => ({ ...attachment, id: String(attachment.id), contentType: attachment.content_type })),
+  reactions: (row.reactions || []).map((reaction) => ({ emoji: reaction.emoji, count: reaction.count, reacted: reaction.user_ids ? reaction.user_ids.includes(currentUserId ?? -1) : reaction.reacted, userIds: reaction.user_ids })),
+  replyTo: row.reply_to ? String(row.reply_to) : undefined,
+  replyPreview: row.reply_preview ? { id: String(row.reply_preview.id), authorName: row.reply_preview.author_name, body: row.reply_preview.body } : undefined,
+  read: Boolean(row.read_at),
+});
+
 function Avatar({ member, size = "md", avatarUrl }: { member: Member | { initials: string; color: string }; size?: "sm" | "md" | "lg"; avatarUrl?: string }) {
-  return avatarUrl ? <img className={`avatar avatar-${size}`} src={avatarUrl} alt={member.initials} /> : <span className={`avatar avatar-${size}`} style={{ background: member.color }}>{member.initials}</span>;
+  const source = avatarUrl ?? ("profile" in member ? member.profile.avatarUrl : undefined);
+  return source ? <img className={`avatar avatar-${size}`} src={source} alt={member.initials} /> : <span className={`avatar avatar-${size}`} style={{ background: member.color }}>{member.initials}</span>;
 }
 
 function App() {
@@ -81,6 +112,36 @@ function App() {
   const [connectedRecurring, setConnectedRecurring] = useState<import("./lib/api").RecurringExpense[]>([]);
   const [connectedEvents, setConnectedEvents] = useState<import("./lib/api").GroupEvent[]>([]);
   const [connectedPolls, setConnectedPolls] = useState<import("./lib/api").Poll[]>([]);
+  const [typingUsers, setTypingUsers] = useState<Record<string, string>>({});
+  const chatConnection = useRef<ChatConnection | null>(null);
+  const markingRead = useRef(new Set<string>());
+  const isBackendGroup = Boolean(authUser && /^\d+$/.test(activeGroup.id));
+  const activeMembers = useMemo(() => isBackendGroup
+    ? (activeGroup.members_detail ?? []).map((member, index) => memberFromDTO(member as GroupMemberDTO, index))
+    : members, [activeGroup.members_detail, isBackendGroup]);
+  const currentMember = activeMembers.find((member) => member.id === String(authUser?.id)) ?? activeMembers[0] ?? members[0];
+  const groupConversation = useMemo<Conversation>(() => ({
+    id: `group-${activeGroup.id}`,
+    kind: "group",
+    title: activeGroup.name,
+    subtitle: `${activeMembers.length || activeGroup.members} members`,
+    unread: 0,
+    lastMessage: chat.length ? chat[chat.length - 1].message : "Start the group conversation",
+    accent: activeGroup.accent,
+  }), [activeGroup.id, activeGroup.name, activeGroup.members, activeGroup.accent, activeMembers.length, chat]);
+  const directConversations = useMemo<Conversation[]>(() => activeMembers
+    .filter((member) => member.id !== String(authUser?.id) && member.id !== "me")
+    .map((member) => ({
+      id: `dm-${member.id}`,
+      kind: "direct",
+      title: member.name,
+      subtitle: member.profile.status || "Available",
+      memberId: member.id,
+      unread: (privateChats[member.id] ?? []).filter((message) => !message.mine && !message.read).length,
+      lastMessage: privateChats[member.id]?.length ? privateChats[member.id][privateChats[member.id].length - 1].message : "Start a private chat",
+      accent: member.color,
+    })), [activeMembers, authUser?.id, privateChats]);
+  const conversations = useMemo(() => [groupConversation, ...directConversations], [groupConversation, directConversations]);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const enterWorkspace = () => { setShowAuth(false); setShowLanding(false); };
@@ -91,27 +152,43 @@ function App() {
   const refreshInvitations = async () => { try { setInvitations(await api.invitations()); } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not load invitations."); } };
   const refreshGroups = async () => {
     const items = await api.groups();
-    const backendGroups = (items as Array<{ id: number; name: string; emoji: string; member_count: number; members_detail?: { user_id: number; name: string; initials: string; role: string }[] }>).map((item, index) => ({ id: String(item.id), name: item.name, emoji: item.emoji || "✦", meta: "Synced workspace", members: item.member_count, total: 0, members_detail: item.members_detail || [], accent: ["#b7f36b", "#8dd8ff", "#ffb1d5"][index % 3], currency: "BDT" as const }));
+    const backendGroups = items.map((item, index) => ({ id: String(item.id), name: item.name, emoji: item.emoji || "✦", meta: "Synced workspace", members: item.member_count, total: 0, members_detail: item.members_detail || [], accent: ["#b7f36b", "#8dd8ff", "#ffb1d5"][index % 3], currency: "BDT" as const }));
     setAvailableGroups(backendGroups.length ? backendGroups : []);
     if (backendGroups.length && !backendGroups.some((group) => group.id === activeGroup.id)) setActiveGroup(backendGroups[0]);
   };
   const createGroup = async (payload: { name: string; emoji: string; description: string }) => {
-    const created = await api.createGroup({ ...payload, slug: `${payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}` });
-    const item = created as { id: number; name: string; emoji: string; member_count: number; members_detail?: { user_id: number; name: string; initials: string; role: string }[] };
+    const item = await api.createGroup({ ...payload, slug: `${payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}` });
     const group: Group = { id: String(item.id), name: item.name, emoji: item.emoji || "✦", meta: "Synced workspace", members: item.member_count, total: 0, members_detail: item.members_detail || [], accent: "#b7f36b", currency: "BDT" };
     setAvailableGroups((current) => [...current, group]); setActiveGroup(group); setShowGroupCreate(false); setActiveView("overview"); notify(`Created ${group.name}.`);
   };
   const activeMessages = conversation.kind === "group" ? chat : (privateChats[conversation.memberId ?? ""] ?? []);
+  const updateActiveMessage = (message: ChatMessage) => {
+    const merge = (items: ChatMessage[]) => items.some((item) => item.id === message.id)
+      ? items.map((item) => item.id === message.id ? message : item)
+      : [...items, message];
+    if (conversation.kind === "group") setChat(merge);
+    else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: merge(current[conversation.memberId ?? ""] ?? []) }));
+  };
   const hydrateMessages = async () => {
-    if (!getAccessToken()) return;
+    if (!getAccessToken() || !isBackendGroup) return;
+    if (conversation.kind === "group") setChat([]);
+    else if (conversation.memberId) setPrivateChats((current) => ({ ...current, [conversation.memberId as string]: [] }));
     try {
-      const rows = conversation.kind === "group" && /^\d+$/.test(activeGroup.id) ? await api.groupMessages(activeGroup.id) : conversation.memberId && /^\d+$/.test(conversation.memberId) ? await api.directMessages(conversation.memberId) : [];
-      const mapped = (rows as Array<{ id: number; author: number; author_name: string; author_initials: string; body: string; attachments: ChatAttachment[]; reactions: { emoji: string; count: number }[]; created_at: string }>).map((row) => ({ id: String(row.id), senderId: String(row.author), member: row.author_name, initials: row.author_initials, message: row.body, time: new Date(row.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), color: "#99b8ff", mine: row.author === authUser?.id, attachments: row.attachments || [], reactions: row.reactions || [], read: true }));
-      if (conversation.kind === "group" && mapped.length) setChat(mapped); else if (conversation.memberId && mapped.length) setPrivateChats((current) => ({ ...current, [conversation.memberId as string]: mapped }));
+      const rows = conversation.kind === "group" ? await api.groupMessages(activeGroup.id) : await api.directMessages(conversation.memberId ?? "");
+      const mapped = rows.map((row) => normalizeMessage(row, authUser?.id));
+      if (conversation.kind === "group") setChat(mapped);
+      else if (conversation.memberId) setPrivateChats((current) => ({ ...current, [conversation.memberId as string]: mapped }));
     } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not load chat history."); }
   };
 
   useEffect(() => { void hydrateMessages(); }, [activeGroup.id, conversation.kind, conversation.memberId, authUser?.id]);
+
+  useEffect(() => {
+    setConversation({
+      id: `group-${activeGroup.id}`, kind: "group", title: activeGroup.name,
+      subtitle: `${activeGroup.members} members`, unread: 0, lastMessage: "Start the group conversation", accent: activeGroup.accent,
+    });
+  }, [activeGroup.id]);
 
   useEffect(() => {
     if (!getAccessToken()) return;
@@ -120,21 +197,38 @@ function App() {
 
   useEffect(() => {
     if (!authUser) return;
-    Promise.all([refreshGroups(), refreshInvitations()]).catch((requestError) => notify(requestError instanceof Error ? requestError.message : "Could not load your groups."));
+    Promise.all([refreshGroups(), refreshInvitations(), api.profile().then((profile) => setChatTheme(profile.theme || "default"))]).catch((requestError) => notify(requestError instanceof Error ? requestError.message : "Could not load your groups."));
   }, [authUser]);
 
   useEffect(() => {
-    if (activeView !== "chat") return;
-    const handlePayload = (payload: unknown) => {
-      const event = payload as Partial<ChatMessage> & { event?: string };
-      if (event.event !== "message" || !event.id || !event.message) return;
-      const message = event as ChatMessage;
-      if (conversation.kind === "group") setChat((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
-      else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: [...(current[conversation.memberId ?? ""] ?? []).filter((item) => item.id !== message.id), message] }));
+    if (activeView !== "chat" || !isBackendGroup) return;
+    const handlePayload = (event: import("./lib/api").ChatEvent) => {
+      if ((event.event === "message" || event.event === "reaction" || event.event === "read") && event.message) {
+        updateActiveMessage(normalizeMessage(event.message, authUser?.id));
+      } else if (event.event === "typing" && event.user) {
+        const key = String(event.user.id);
+        setTypingUsers((current) => {
+          const next = { ...current };
+          if (event.is_typing) next[key] = event.user?.name ?? "Someone";
+          else delete next[key];
+          return next;
+        });
+      } else if (event.event === "error") notify("The realtime chat action could not be completed.");
     };
-    const socket = conversation.kind === "group" ? connectToGroupChat(activeGroup.id, handlePayload) : connectToDirectChat(conversation.memberId ?? "", handlePayload);
-    return () => socket.close();
-  }, [activeGroup.id, activeView, conversation.kind, conversation.memberId]);
+    const connection = conversation.kind === "group"
+      ? connectToGroupChat(activeGroup.id, handlePayload)
+      : connectToDirectChat(conversation.memberId ?? "", handlePayload);
+    chatConnection.current = connection;
+    return () => { connection.close(); if (chatConnection.current === connection) chatConnection.current = null; setTypingUsers({}); };
+  }, [activeGroup.id, activeView, conversation.kind, conversation.memberId, isBackendGroup, authUser?.id]);
+
+  useEffect(() => {
+    if (activeView !== "chat" || !isBackendGroup) return;
+    activeMessages.filter((message) => !message.mine && !message.read && /^\d+$/.test(message.id) && !markingRead.current.has(message.id)).forEach((message) => {
+      markingRead.current.add(message.id);
+      api.markMessageRead(message.id).then((row) => updateActiveMessage(normalizeMessage(row, authUser?.id))).catch(() => markingRead.current.delete(message.id));
+    });
+  }, [activeView, activeMessages, isBackendGroup, authUser?.id]);
 
   const loadConnectedGroup = async (groupId: string) => {
     if (!getAccessToken() || !/^\d+$/.test(groupId)) return;
@@ -175,30 +269,66 @@ function App() {
   };
 
   const sendMessage = async (message: string, attachments: ChatAttachment[] = [], replyTo?: string) => {
-    if (!message.trim() && attachments.length === 0) return;
-    const next: ChatMessage = { id: crypto.randomUUID(), senderId: "me", member: authUser?.display_name || "Rafi", initials: "RF", message, time: "Now", color: "#b7f36b", mine: true, attachments, replyTo, read: false };
-    if (authUser && /^\d+$/.test(activeGroup.id)) {
+    if (!message.trim() && attachments.length === 0) throw new Error("Write a message or add an attachment.");
+    if (isBackendGroup) {
       try {
-        const saved = await api.sendMessage(conversation.kind === "group" ? { group: Number(activeGroup.id), kind: "group", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined } : { recipient: Number(conversation.memberId), kind: "direct", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined });
-        const persisted = saved as { id: number; created_at: string; author_name?: string };
-        next.id = String(persisted.id); next.time = new Date(persisted.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not send the message."); return; }
+        const saved = await api.sendMessage(conversation.kind === "group"
+          ? { group: Number(activeGroup.id), kind: "group", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined }
+          : { recipient: Number(conversation.memberId), kind: "direct", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined });
+        updateActiveMessage(normalizeMessage(saved, authUser?.id));
+      } catch (requestError) {
+        const error = requestError instanceof Error ? requestError : new Error("Could not send the message.");
+        notify(error.message);
+        throw error;
+      }
+    } else {
+      const next: ChatMessage = { id: crypto.randomUUID(), senderId: "me", member: currentMember.name, initials: currentMember.initials, message, time: "Now", color: currentMember.color, mine: true, attachments, replyTo, read: false };
+      updateActiveMessage(next);
     }
-    if (conversation.kind === "group") setChat((current) => [...current, next]);
-    else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: [...(current[conversation.memberId ?? ""] ?? []), next] }));
     notify(attachments.length ? "Shared to the conversation" : "Message sent");
   };
 
-  const openDirect = (member: Member) => { setConversation({ id: `dm-${member.id}`, kind: "direct", title: member.name, subtitle: member.online ? "Active now" : member.profile.lastSeen ?? "Active recently", memberId: member.id, unread: 0, lastMessage: "Start a private chat", accent: member.color }); };
-  const addReaction = (id: string, emoji: string) => {
-    const updater = (items: ChatMessage[]) => items.map((item) => item.id !== id ? item : { ...item, reactions: [...(item.reactions ?? []).filter((reaction) => reaction.emoji !== emoji), { emoji, count: ((item.reactions ?? []).find((reaction) => reaction.emoji === emoji)?.count ?? 0) + 1, reacted: true }] });
-    if (authUser && /^\d+$/.test(id)) void api.reactMessage(id, emoji).catch((requestError) => notify(requestError instanceof Error ? requestError.message : "Could not add reaction."));
+  const uploadChatAttachment = async (file: File) => {
+    if (!isBackendGroup) return { id: crypto.randomUUID(), kind: (file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file") as AttachmentKind, name: file.name, url: URL.createObjectURL(file), size: file.size };
+    const attachment = await api.uploadMessageAttachment(file, conversation.kind === "group" ? { group: Number(activeGroup.id) } : { recipient: Number(conversation.memberId) });
+    return { ...attachment, contentType: attachment.content_type } as ChatAttachment;
+  };
+  const openDirect = (member: Member) => {
+    const direct = directConversations.find((item) => item.memberId === member.id);
+    if (direct) setConversation(direct);
+  };
+  const addReaction = async (id: string, emoji: string) => {
+    if (isBackendGroup && /^\d+$/.test(id)) {
+      try { updateActiveMessage(normalizeMessage(await api.reactMessage(id, emoji), authUser?.id)); }
+      catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not update reaction."); }
+      return;
+    }
+    const updater = (items: ChatMessage[]) => items.map((item) => {
+      if (item.id !== id) return item;
+      const existing = (item.reactions ?? []).find((reaction) => reaction.emoji === emoji);
+      const reactions = (item.reactions ?? []).filter((reaction) => reaction.emoji !== emoji);
+      if (!existing?.reacted) reactions.push({ emoji, count: (existing?.count ?? 0) + 1, reacted: true });
+      else if (existing.count > 1) reactions.push({ ...existing, count: existing.count - 1, reacted: false });
+      return { ...item, reactions };
+    });
     if (conversation.kind === "group") setChat(updater); else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: updater(current[conversation.memberId ?? ""] ?? []) }));
+  };
+  const markCurrentThreadRead = async () => {
+    const unread = activeMessages.filter((message) => !message.mine && !message.read && /^\d+$/.test(message.id));
+    await Promise.all(unread.map((message) => api.markMessageRead(message.id).then((row) => updateActiveMessage(normalizeMessage(row, authUser?.id)))));
+    notify(unread.length ? "Conversation marked read." : "No unread messages in this conversation.");
+  };
+  const changeChatTheme = async (nextTheme: string) => {
+    setChatTheme(nextTheme);
+    if (authUser) {
+      try { await api.updateProfile({ theme: nextTheme }); }
+      catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Theme could not be saved."); }
+    }
   };
 
   if (showLanding) return <><Landing onEnter={() => { setAuthMode("signin"); setShowAuth(true); }} onNavigate={navigate} /><button className="demo-entry" onClick={enterWorkspace}>Preview the workspace without an account</button>{showAuth && <AuthModal mode={authMode} onModeChange={setAuthMode} onClose={() => setShowAuth(false)} onSuccess={handleAuthSuccess} onDemo={enterWorkspace} />}</>;
   return <div className={`app-shell ${theme}`}>
-    <Sidebar activeView={activeView} onNavigate={navigate} onLanding={() => setShowLanding(true)} activeGroup={activeGroup} availableGroups={availableGroups} groupMenuOpen={showGroupMenu} onToggleGroupMenu={() => setShowGroupMenu((value) => !value)} onGroupChange={selectGroup} onCreateGroup={() => setShowGroupCreate(true)} onOpenInvite={() => setShowInvite(true)} onOpenPalette={() => setShowPalette(true)} profileImage={profileImage} onOpenProfile={() => setShowProfile(members[0])} onSignOut={handleSignOut} authUser={authUser} />
+    <Sidebar activeView={activeView} onNavigate={navigate} onLanding={() => setShowLanding(true)} activeGroup={activeGroup} availableGroups={availableGroups} groupMenuOpen={showGroupMenu} onToggleGroupMenu={() => setShowGroupMenu((value) => !value)} onGroupChange={selectGroup} onCreateGroup={() => setShowGroupCreate(true)} onOpenInvite={() => setShowInvite(true)} onOpenPalette={() => setShowPalette(true)} profileImage={profileImage ?? currentMember.profile.avatarUrl} onOpenProfile={() => setShowProfile(currentMember)} onSignOut={handleSignOut} authUser={authUser} />
     <main className="main-content"><Topbar activeGroup={activeGroup} query={query} setQuery={setQuery} onOpenInvite={() => setShowInvite(true)} onNotifications={() => { setShowNotifications((value) => !value); void refreshInvitations(); }} onTheme={() => setTheme(theme === "dark" ? "light" : "dark")} theme={theme} />
       {showNotifications && <Notifications onClose={() => setShowNotifications(false)} onAction={(message) => { setShowNotifications(false); notify(message); }} />}
       <div className="page-content">
@@ -206,7 +336,7 @@ function App() {
         {activeView === "expenses" && <ExpensesPage activeGroup={activeGroup} expenses={expenses} onAddExpense={() => setShowExpense(true)} query={query} onToast={notify} />}
         {activeView === "settle" && <SettlePage activeGroup={activeGroup} onToast={notify} />}
         {activeView === "plan" && <PlanPage activeGroup={activeGroup} onToast={notify} />}
-        {activeView === "chat" && <ChatPage activeGroup={activeGroup} conversations={[conversation, ...members.slice(1, 4).map((member) => ({ id: `dm-${member.id}`, kind: "direct" as const, title: member.name, subtitle: member.online ? "Active now" : member.profile.lastSeen ?? "Active recently", memberId: member.id, unread: member.id === "nabil" ? 1 : 0, lastMessage: member.id === "nabil" ? "Bro, I uploaded the ride receipt." : "Start a private chat", accent: member.color }))]} activeConversation={conversation} onSelectConversation={setConversation} chat={activeMessages} onSend={sendMessage} onReact={addReaction} onOpenProfile={(id) => setShowProfile(members.find((member) => member.id === id) ?? null)} onOpenDirect={openDirect} chatTheme={chatTheme} onThemeChange={setChatTheme} />}
+        {activeView === "chat" && <ChatPage activeGroup={activeGroup} members={activeMembers} conversations={conversations} activeConversation={conversation} onSelectConversation={setConversation} chat={activeMessages} onSend={sendMessage} onUpload={uploadChatAttachment} onTyping={(isTyping) => { chatConnection.current?.send({ event: "typing", is_typing: isTyping }); }} typingNames={Object.values(typingUsers)} onReact={addReaction} onMarkRead={markCurrentThreadRead} onOpenProfile={(id) => setShowProfile(activeMembers.find((member) => member.id === id) ?? null)} onOpenDirect={openDirect} chatTheme={chatTheme} onThemeChange={changeChatTheme} />}
         {authUser && <ConnectedFeaturePanel activeGroup={activeGroup} currentUserId={authUser.id} summary={connectedSummary} budgets={connectedBudgets} notifications={connectedNotifications} settlementPlan={connectedSettlementPlan} recurring={connectedRecurring} events={connectedEvents} polls={connectedPolls} onSync={() => loadConnectedGroup(activeGroup.id)} onToast={notify} />}
       </div>
     </main>
@@ -217,7 +347,7 @@ function App() {
     {showNotifications && <InvitationInbox invitations={invitations} onAccept={async (id) => { await api.acceptInvitation(id); await refreshGroups(); await refreshInvitations(); notify("Invitation accepted and membership updated."); }} onDecline={async (id) => { await api.declineInvitation(id); await refreshInvitations(); notify("Invitation declined."); }} />}
 
     {showPalette && <CommandPalette onClose={() => setShowPalette(false)} onNavigate={navigate} onAddExpense={() => { setShowPalette(false); setShowExpense(true); }} />}
-    {showProfile && <ProfileDrawer member={showProfile} avatarUrl={showProfile.id === "me" ? profileImage : undefined} onClose={() => setShowProfile(null)} onMessage={() => { if (showProfile.id !== "me") openDirect(showProfile); setShowProfile(null); navigate("chat"); }} onAvatarChange={(url) => { setProfileImage(url); notify("Profile picture updated"); }} />}
+    {showProfile && <ProfileDrawer member={showProfile} isSelf={showProfile.id === String(authUser?.id) || showProfile.id === "me"} avatarUrl={(showProfile.id === String(authUser?.id) || showProfile.id === "me") ? profileImage : showProfile.profile.avatarUrl} onClose={() => setShowProfile(null)} onMessage={() => { if (showProfile.id !== String(authUser?.id) && showProfile.id !== "me") openDirect(showProfile); setShowProfile(null); navigate("chat"); }} onAvatarChange={(url) => { setProfileImage(url); notify("Profile picture updated"); }} />}
     {toast && <div className="toast"><Check size={16} /> {toast}</div>}
   </div>;
 }
@@ -269,8 +399,7 @@ function Landing({ onEnter, onNavigate }: { onEnter: () => void; onNavigate: (vi
   return <div className="landing"><header className="landing-nav"><button className="brand" onClick={onEnter}><span className="brand-mark"><Split size={17} /></span><span>splitwise<span className="brand-plus">+</span></span></button><nav><a href="#product">Product</a><a href="#solutions">Solutions</a><a href="#features">Features</a><a href="#pricing">Pricing</a></nav><div className="nav-actions"><button className="ghost-button" onClick={onEnter}><LogIn size={15} /> Sign in</button><button className="primary-button small" onClick={onEnter}>Get started <ArrowUpRight size={15} /></button></div></header><section className="hero"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" /> THE SHARED MONEY WORKSPACE</div><h1>Shared money,<br /><em>without</em> the shared headache.</h1><p>Split expenses, plan together, settle up, and keep every shared financial decision in one calm place — now built around ৳.</p><div className="hero-actions"><button className="primary-button" onClick={onEnter}>Start for free <ArrowUpRight size={17} /></button><button className="text-button" onClick={() => document.getElementById("product")?.scrollIntoView({ behavior: "smooth" })}>Explore the product <span>↓</span></button></div><div className="hero-proof"><div className="avatar-stack">{members.slice(0, 4).map((member) => <Avatar key={member.id} member={member} size="sm" />)}</div><span>Built for the people<br /><strong>you share life with.</strong></span></div></div><div className="hero-demo" id="product"><div className="demo-glow" /><div className="demo-window"><div className="demo-window-top"><div className="window-dots"><i /><i /><i /></div><span>dhaka trip</span><span className="demo-lock">⌘ K</span></div><div className="demo-window-body"><div className="demo-mini-sidebar"><span className="active"><LayoutDashboard size={14} /></span><span><Receipt size={14} /></span><span><WalletCards size={14} /></span><span><MessageCircle size={14} /></span></div><div className="demo-panel"><div className="demo-heading"><div><span className="muted-label">AUG 14 – AUG 21, 2025</span><h3>Dhaka trip <ChevronDown size={14} /></h3></div><span className="demo-members">{members.slice(1, 4).map((member) => <Avatar key={member.id} member={member} size="sm" />)}<b>+5</b></span></div><div className="demo-balance"><span className="muted-label">YOUR BALANCE</span><strong>+ ৳ 1,060</strong><span>you are owed <ArrowUpRight size={13} /></span></div><div className="demo-tabs">{["expenses", "balance", "chat"].map((tab) => <button key={tab} className={demoTab === tab ? "selected" : ""} onClick={() => setDemoTab(tab)}>{tab === "balance" ? "Balances" : tab[0].toUpperCase() + tab.slice(1)}</button>)}</div><div className="demo-card"><div className="demo-card-icon">{demoTab === "expenses" ? <Receipt size={18} /> : demoTab === "balance" ? <CircleDollarSign size={18} /> : <MessageCircle size={18} />}</div><div><strong>{demoCards.title}</strong><span>{demoCards.detail}</span></div><b>{demoCards.amount}</b></div><div className="demo-card faded"><div className="demo-card-icon soft"><CalendarDays size={18} /></div><div><strong>River cruise</strong><span>Proposal · 8 people</span></div><button onClick={() => setDemoSettled(!demoSettled)} className="demo-action">{demoSettled ? "Added" : "Vote"}</button></div><div className="demo-chat"><span className="chat-dot" /><span>Tisha is typing…</span><button onClick={() => onNavigate("chat")}><ArrowUpRight size={14} /></button></div></div></div></div></div></section><section className="social-proof"><div><strong>2.4k</strong><span>groups managed</span></div><div><strong>18.6k</strong><span>expenses tracked</span></div><div><strong>৳ 4.2M</strong><span>settled together</span></div><div><strong>৳</strong><span>default currency</span></div></section><section className="landing-section problem" id="solutions"><div className="section-kicker">THE OLD WAY</div><div className="split-heading"><h2>Money gets messy<br /><em>when it gets shared.</em></h2><p>SplitWise+ turns the awkward questions into clear next steps — without making your group feel like a finance department.</p></div><div className="problem-grid"><div className="problem-card"><span>01</span><h3>“Who paid for the hotel?”</h3><p>See the full story behind every balance. Every expense, participant, receipt, and comment stays connected.</p><button onClick={onEnter}>Explore balances <ArrowUpRight size={15} /></button></div><div className="problem-card active-problem"><span>02</span><h3>“Did everyone pay their share?”</h3><p>Confirm, nudge, and settle from one place. No spreadsheets. No screenshots. No group-chat archaeology.</p><button onClick={onEnter}>See it in action <ArrowUpRight size={15} /></button></div><div className="problem-card"><span>03</span><h3>“Where did the budget go?”</h3><p>Make plans, track spend, and understand what is changing before the trip is over.</p><button onClick={onEnter}>View analytics <ArrowUpRight size={15} /></button></div></div></section><section className="workspace-section" id="features"><div className="workspace-copy"><div className="section-kicker">ONE GROUP. ONE WORKSPACE.</div><h2>Everything shared,<br /><em>finally together.</em></h2><p>Expenses are just the beginning. Bring the conversation, decisions, receipts, plans, and money into the same shared context.</p><div className="feature-list"><button className="feature-item active" onClick={onEnter}><span className="feature-icon lime"><Receipt size={18} /></span><span><strong>Expenses that explain themselves</strong><small>Smart splits, receipts, and confirmations</small></span><ArrowUpRight size={16} /></button><button className="feature-item" onClick={() => { onEnter(); onNavigate("chat"); }}><span className="feature-icon blue"><MessageCircle size={18} /></span><span><strong>Messenger-style conversation</strong><small>DMs, media, reactions, and live delivery</small></span><ArrowUpRight size={16} /></button><button className="feature-item" onClick={onEnter}><span className="feature-icon pink"><Target size={18} /></span><span><strong>Plans tied to reality</strong><small>Budgets, votes, tasks, and timelines</small></span><ArrowUpRight size={16} /></button></div></div><div className="orbit-visual"><div className="orbit-core"><Split size={27} /><span>dhaka<br />trip</span></div><div className="orbit-node node-expenses"><Receipt size={17} /><span>Expenses</span></div><div className="orbit-node node-chat"><MessageCircle size={17} /><span>Live chat</span></div><div className="orbit-node node-budget"><Target size={17} /><span>Budget</span></div><div className="orbit-node node-plan"><CalendarDays size={17} /><span>Plans</span></div></div></section><section className="settlement-section"><div className="settlement-visual"><div className="settlement-before"><span className="muted-label">BEFORE</span><div><b>A</b><span /> <b>B</b><strong>৳ 340</strong></div><div><b>B</b><span /> <b>C</b><strong>৳ 620</strong></div><div><b>A</b><span /> <b>C</b><strong>৳ 210</strong></div><div><b>C</b><span /> <b>D</b><strong>৳ 180</strong></div></div><div className="settlement-arrow"><Sparkles size={18} /><ArrowUpRight size={18} /></div><div className="settlement-after"><span className="muted-label">AFTER OPTIMIZATION</span><div><b>A</b><span /> <b>C</b><strong>৳ 190</strong></div><div><b>B</b><span /> <b>C</b><strong>৳ 430</strong></div><div><b>C</b><span /> <b>D</b><strong>৳ 180</strong></div><small>3 payments instead of 5</small></div></div><div className="settlement-copy"><div className="section-kicker">SMART SETTLEMENT</div><h2>Less paying back.<br /><em>More moving on.</em></h2><p>SplitWise+ simplifies the web of shared debts into the fewest, clearest payments — so your group can close the loop together.</p><button className="text-button" onClick={onEnter}>See your balances <ArrowUpRight size={15} /></button></div></section><section className="pricing-section" id="pricing"><div className="section-kicker">SIMPLE BY DESIGN</div><h2>Start together.<br /><em>Grow when you need to.</em></h2><div className="pricing-grid"><div className="price-card"><span className="price-label">FREE</span><h3>For the everyday share</h3><div className="price">৳ 0 <small>/ forever</small></div><p>Everything a small group needs to stay in sync.</p><ul><li><Check size={15} /> Unlimited expenses</li><li><Check size={15} /> Smart settlement</li><li><Check size={15} /> Group chat</li></ul><button className="secondary-button" onClick={onEnter}>Get started</button></div><div className="price-card featured"><span className="price-label">PLUS <i>most loved</i></span><h3>For groups that mean business</h3><div className="price">৳ 400 <small>/ member / month</small></div><p>More space for plans, receipts, budgets, and history.</p><ul><li><Check size={15} /> Everything in Free</li><li><Check size={15} /> Media-rich messaging</li><li><Check size={15} /> Advanced analytics</li></ul><button className="primary-button" onClick={onEnter}>Start Plus <ArrowUpRight size={15} /></button></div><div className="price-card"><span className="price-label">TEAMS</span><h3>For communities in motion</h3><div className="price">Let’s talk</div><p>Permissions, workspaces, and control for larger groups.</p><ul><li><Check size={15} /> Everything in Plus</li><li><Check size={15} /> Team permissions</li><li><Check size={15} /> Priority support</li></ul><button className="secondary-button" onClick={onEnter}>Contact us</button></div></div></section><footer className="landing-footer"><button className="brand" onClick={onEnter}><span className="brand-mark"><Split size={17} /></span><span>splitwise<span className="brand-plus">+</span></span></button><span>Shared money, without the shared headache.</span><span>© 2025 SplitWise+</span></footer></div>;
 }
 
-function Sidebar({ activeView, onNavigate, onLanding, activeGroup, availableGroups, groupMenuOpen, onToggleGroupMenu, onGroupChange, onCreateGroup, onOpenInvite, onOpenPalette, profileImage, onOpenProfile, onSignOut, authUser }: { activeView: View; onNavigate: (view: View) => void; onLanding: () => void; activeGroup: Group; availableGroups: Group[]; groupMenuOpen: boolean; onToggleGroupMenu: () => void; onGroupChange: (group: Group) => void; onCreateGroup: () => void; onOpenInvite: () => void; onOpenPalette: () => void; profileImage?: string; onOpenProfile: () => void; onSignOut: () => void; authUser: AuthUser | null }) { return <aside className="sidebar"><button className="brand app-brand" onClick={onLanding}><span className="brand-mark"><Split size={17} /></span><span>splitwise<span className="brand-plus">+</span></span></button><div className="group-switcher-wrap"><button className="group-switcher" onClick={onToggleGroupMenu} aria-expanded={groupMenuOpen}><span className="group-symbol" style={{ background: activeGroup.accent }}>{activeGroup.emoji}</span><span><small>ACTIVE GROUP</small><strong>{activeGroup.name}</strong></span><ChevronDown size={15} /></button>{groupMenuOpen && <div className="group-menu">{availableGroups.map((group) => <button key={group.id} className={group.id === activeGroup.id ? "selected" : ""} onClick={() => onGroupChange(group)}><span className="group-symbol" style={{ background: group.accent }}>{group.emoji}</span><span><strong>{group.name}</strong><small>{group.members} members · {money(group.total)}</small></span>{group.id === activeGroup.id && <Check size={14} />}</button>)}</div>}
-{groupMenuOpen && <div className="group-menu-actions"><button onClick={onCreateGroup}><Plus size={14} /> New group</button><button onClick={onOpenInvite}><Users size={14} /> Invite people</button></div>}</div><nav className="side-nav"><span className="nav-section">Workspace</span><NavButton icon={<LayoutDashboard size={17} />} label="Overview" active={activeView === "overview"} onClick={() => onNavigate("overview")} /><NavButton icon={<Receipt size={17} />} label="Expenses" active={activeView === "expenses"} onClick={() => onNavigate("expenses")} badge="4" /><NavButton icon={<WalletCards size={17} />} label="Settle up" active={activeView === "settle"} onClick={() => onNavigate("settle")} /><NavButton icon={<CalendarDays size={17} />} label="Plan" active={activeView === "plan"} onClick={() => onNavigate("plan")} /><NavButton icon={<MessageCircle size={17} />} label="Messages" active={activeView === "chat"} onClick={() => onNavigate("chat")} badge="3" /><span className="nav-section space-top">Manage</span><NavButton icon={<Target size={17} />} label="Budgets" onClick={() => onNavigate("overview")} /><NavButton icon={<FileText size={17} />} label="Documents" onClick={() => onNavigate("overview")} /><NavButton icon={<Activity size={17} />} label="Activity" onClick={() => onNavigate("overview")} /></nav><div className="sidebar-bottom"><button className="command-hint" onClick={onOpenPalette}><Command size={14} /><span>Quick actions</span><kbd>⌘ K</kbd></button><button className="side-settings"><Settings2 size={16} /><span>Settings</span></button><button className="profile profile-button" onClick={onOpenProfile}><Avatar member={members[0]} avatarUrl={profileImage} /><span><strong>{authUser?.display_name || "Rafi"}</strong><small>{authUser ? "Signed in account" : "Demo account"}</small></span><MoreHorizontal size={16} /></button><button className="side-signout" onClick={onSignOut}><LogIn size={15} /><span>Sign out</span></button></div></aside>; }
+function Sidebar({ activeView, onNavigate, onLanding, activeGroup, availableGroups, groupMenuOpen, onToggleGroupMenu, onGroupChange, onCreateGroup, onOpenInvite, onOpenPalette, profileImage, onOpenProfile, onSignOut, authUser }: { activeView: View; onNavigate: (view: View) => void; onLanding: () => void; activeGroup: Group; availableGroups: Group[]; groupMenuOpen: boolean; onToggleGroupMenu: () => void; onGroupChange: (group: Group) => void; onCreateGroup: () => void; onOpenInvite: () => void; onOpenPalette: () => void; profileImage?: string; onOpenProfile: () => void; onSignOut: () => void; authUser: AuthUser | null }) { return <aside className="sidebar"><button className="brand app-brand" onClick={onLanding}><span className="brand-mark"><Split size={17} /></span><span>splitwise<span className="brand-plus">+</span></span></button><div className="group-switcher-wrap"><button className="group-switcher" onClick={onToggleGroupMenu} aria-expanded={groupMenuOpen}><span className="group-symbol" style={{ background: activeGroup.accent }}>{activeGroup.emoji}</span><span><small>ACTIVE GROUP</small><strong>{activeGroup.name}</strong></span><ChevronDown size={15} /></button>{groupMenuOpen && <div className="group-menu">{availableGroups.map((group) => <button key={group.id} className={group.id === activeGroup.id ? "selected" : ""} onClick={() => onGroupChange(group)}><span className="group-symbol" style={{ background: group.accent }}>{group.emoji}</span><span><strong>{group.name}</strong><small>{group.members} members · {money(group.total)}</small></span>{group.id === activeGroup.id && <Check size={14} />}</button>)}<div className="group-menu-actions"><button onClick={onCreateGroup}><Plus size={14} /> New group</button><button onClick={onOpenInvite}><Users size={14} /> Invite people</button></div></div>}</div><nav className="side-nav"><span className="nav-section">Workspace</span><NavButton icon={<LayoutDashboard size={17} />} label="Overview" active={activeView === "overview"} onClick={() => onNavigate("overview")} /><NavButton icon={<Receipt size={17} />} label="Expenses" active={activeView === "expenses"} onClick={() => onNavigate("expenses")} badge="4" /><NavButton icon={<WalletCards size={17} />} label="Settle up" active={activeView === "settle"} onClick={() => onNavigate("settle")} /><NavButton icon={<CalendarDays size={17} />} label="Plan" active={activeView === "plan"} onClick={() => onNavigate("plan")} /><NavButton icon={<MessageCircle size={17} />} label="Messages" active={activeView === "chat"} onClick={() => onNavigate("chat")} badge="3" /><span className="nav-section space-top">Manage</span><NavButton icon={<Target size={17} />} label="Budgets" onClick={() => onNavigate("overview")} /><NavButton icon={<FileText size={17} />} label="Documents" onClick={() => onNavigate("overview")} /><NavButton icon={<Activity size={17} />} label="Activity" onClick={() => onNavigate("overview")} /></nav><div className="sidebar-bottom"><button className="command-hint" onClick={onOpenPalette}><Command size={14} /><span>Quick actions</span><kbd>⌘ K</kbd></button><button className="side-settings"><Settings2 size={16} /><span>Settings</span></button><button className="profile profile-button" onClick={onOpenProfile}><Avatar member={members[0]} avatarUrl={profileImage} /><span><strong>{authUser?.display_name || "Rafi"}</strong><small>{authUser ? "Signed in account" : "Demo account"}</small></span><MoreHorizontal size={16} /></button><button className="side-signout" onClick={onSignOut}><LogIn size={15} /><span>Sign out</span></button></div></aside>; }
 function GroupCreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (payload: { name: string; emoji: string; description: string }) => Promise<void> }) {
   const [name, setName] = useState(""); const [emoji, setEmoji] = useState("✦"); const [description, setDescription] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await onCreate({ name, emoji, description }); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Could not create the group."); } finally { setBusy(false); } };
@@ -300,16 +429,94 @@ function SettlePage({ activeGroup, onToast }: { activeGroup: Group; onToast: (me
 function TransferRow({ from, to, amount, color, onToast }: { from: string; to: string; amount: number; color: string; onToast: (message: string) => void }) { return <div className="transfer-row"><span className="transfer-avatar" style={{ background: color }}>{to.slice(0, 1)}</span><span><strong>{from} <ArrowUpRight size={13} /> {to}</strong><small>Outstanding balance</small></span><b>{money(amount)}</b><button className="settle-button" onClick={() => onToast(`Settlement request sent to ${to}`)}>Request</button></div>; }
 function PlanPage({ activeGroup, onToast }: { activeGroup: Group; onToast: (message: string) => void }) { return <><div className="page-header"><div><div className="eyebrow muted"><span className="eyebrow-dot" /> PLAN TOGETHER</div><h1>Trip plan <span>✦</span></h1><p>{activeGroup.name} · keep decisions, deadlines, and spend pointed in the same direction.</p></div><button className="primary-button" onClick={() => onToast("New plan item created")}><Plus size={17} /> Add to plan</button></div><div className="plan-grid"><div className="glass-card timeline-card"><div className="card-heading"><div><span className="muted-label">UP NEXT</span><h2>Shared itinerary</h2></div><button className="outline-button" onClick={() => onToast("Timeline view opened")}><CalendarDays size={15} /> Timeline</button></div><div className="timeline-item"><div className="timeline-date"><b>16</b><span>AUG</span></div><div className="timeline-copy"><span className="status-chip lime">TODAY</span><h3>River cruise proposal</h3><p>Vote closes in 4 hours · Budget ৳ 3,200</p><div className="vote-actions"><button onClick={() => onToast("Vote recorded: yes")}><Check size={14} /> Yes, I’m in</button><button onClick={() => onToast("Maybe vote recorded")}>Maybe</button><span><Avatar member={members[1]} size="sm" /><Avatar member={members[2]} size="sm" /><b>5/8 voted</b></span></div></div></div><div className="timeline-item"><div className="timeline-date"><b>17</b><span>AUG</span></div><div className="timeline-copy"><span className="status-chip blue">BOOKED</span><h3>Bangladesh National Museum</h3><p>Meet at Shahbag · 11:30</p><div className="task-line"><Check size={14} /> Mahi added tickets to expenses <ArrowUpRight size={14} /></div></div></div><div className="timeline-item"><div className="timeline-date"><b>19</b><span>AUG</span></div><div className="timeline-copy"><span className="status-chip pink">OPEN</span><h3>Choose dinner spot</h3><p>3 suggestions · Everyone can add a place</p><button className="link-button" onClick={() => onToast("Dinner suggestions opened")}><Plus size={14} /> Add suggestion</button></div></div></div><div className="glass-card task-card"><div className="card-heading"><div><span className="muted-label">GROUP TASKS</span><h2>Who’s on what</h2></div><button className="more-button" onClick={() => onToast("Task actions opened")}><MoreHorizontal size={17} /></button></div><div className="task-person"><Avatar member={members[1]} size="sm" /><span><strong>Tisha</strong><small>Book river cruise</small></span><span className="task-due">Due today</span></div><div className="task-person"><Avatar member={members[2]} size="sm" /><span><strong>Nabil</strong><small>Confirm airport ride</small></span><span className="task-due done">Done</span></div><div className="task-person"><Avatar member={members[3]} size="sm" /><span><strong>Mahi</strong><small>Upload museum receipt</small></span><span className="task-due">Due Aug 17</span></div><button className="card-action" onClick={() => onToast("New task created")}><Plus size={15} /> Add task</button></div></div></>; }
 
-function ChatPage({ activeGroup, conversations, activeConversation, onSelectConversation, chat, onSend, onReact, onOpenProfile, onOpenDirect, chatTheme, onThemeChange }: { activeGroup: Group; conversations: Conversation[]; activeConversation: Conversation; onSelectConversation: (conversation: Conversation) => void; chat: ChatMessage[]; onSend: (message: string, attachments?: ChatAttachment[], replyTo?: string) => void; onReact: (id: string, emoji: string) => void; onOpenProfile: (id: string) => void; onOpenDirect: (member: Member) => void; chatTheme: string; onThemeChange: (theme: string) => void }) {
+function ChatPage({ activeGroup, members: chatMembers, conversations, activeConversation, onSelectConversation, chat, onSend, onUpload, onTyping, typingNames, onReact, onMarkRead, onOpenProfile, onOpenDirect, chatTheme, onThemeChange }: { activeGroup: Group; members: Member[]; conversations: Conversation[]; activeConversation: Conversation; onSelectConversation: (conversation: Conversation) => void; chat: ChatMessage[]; onSend: (message: string, attachments?: ChatAttachment[], replyTo?: string) => Promise<void>; onUpload: (file: File) => Promise<ChatAttachment>; onTyping: (isTyping: boolean) => void; typingNames: string[]; onReact: (id: string, emoji: string) => Promise<void>; onMarkRead: () => Promise<void>; onOpenProfile: (id: string) => void; onOpenDirect: (member: Member) => void; chatTheme: string; onThemeChange: (theme: string) => Promise<void> }) {
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
-  return <><div className="page-header chat-page-header"><div><div className="eyebrow muted"><span className="eyebrow-dot" /> REAL-TIME MESSAGING</div><h1>{activeConversation.kind === "group" ? "Talk it out" : `DM with ${activeConversation.title}`} <span>⌁</span></h1><p>Messenger-style chat with context, media, and private threads.</p></div><div className="online-label"><span className="positive-dot" /> {activeConversation.kind === "group" ? "4 online" : activeConversation.subtitle}</div></div><div className={`messenger-shell chat-theme-${chatTheme}`}><aside className="conversation-rail"><div className="conversation-heading"><div><span className="muted-label">MESSAGES</span><h2>Inbox</h2></div><button className="icon-button"><MoreHorizontal size={17} /></button></div><label className="conversation-search"><Search size={14} /><input placeholder="Search chats" /></label><button className={`conversation-item ${activeConversation.kind === "group" ? "active" : ""}`} onClick={() => onSelectConversation(conversations[0])}><span className="conversation-avatar group-avatar"><Split size={16} /></span><span><strong>{activeGroup.name}</strong><small>{activeConversation.kind === "group" ? "You: " : ""}{conversations[0].lastMessage}</small></span><b>3</b></button>{conversations.slice(1).map((item) => <button key={item.id} className={`conversation-item ${activeConversation.id === item.id ? "active" : ""}`} onClick={() => onSelectConversation(item)}><Avatar member={members.find((member) => member.id === item.memberId) ?? members[1]} size="md" /><span><strong>{item.title}</strong><small>{item.lastMessage}</small></span>{item.unread > 0 && <b>{item.unread}</b>}</button>)}<div className="conversation-people"><span className="muted-label">GROUP PEOPLE</span>{members.slice(1).map((member) => <button key={member.id} onClick={() => onOpenProfile(member.id)}><Avatar member={member} size="sm" /><span>{member.name}</span><i className={member.online ? "online" : ""} /></button>)}</div></aside><section className="messenger-main"><div className="messenger-toolbar"><button className="messenger-title" onClick={() => activeConversation.kind === "direct" && onOpenProfile(activeConversation.memberId ?? "")}><span className="toolbar-avatar">{activeConversation.kind === "group" ? <Split size={15} /> : <Avatar member={members.find((member) => member.id === activeConversation.memberId) ?? members[1]} size="sm" />}</span><span><strong>{activeConversation.title}</strong><small>{activeConversation.subtitle}</small></span></button><div className="messenger-actions"><button className="icon-button" onClick={() => onThemeChange(chatTheme === "default" ? "midnight" : chatTheme === "midnight" ? "soft" : "default")} title="Change chat theme"><Palette size={16} /></button><button className="icon-button" onClick={() => activeConversation.kind === "direct" && onOpenProfile(activeConversation.memberId ?? "")} title="View profile"><UserRound size={16} /></button><button className="icon-button"><MoreHorizontal size={16} /></button></div></div><div className="chat-messages messenger-messages">{chat.map((message) => <MessageBubble key={message.id} message={message} onReact={onReact} onReply={() => setReplyTarget(message)} onOpenProfile={onOpenProfile} onSelect={() => setSelectedMessage(selectedMessage === message.id ? null : message.id)} selected={selectedMessage === message.id} />)}<div className="typing-indicator"><span /><span /><span /> {activeConversation.kind === "group" ? "Tisha is typing…" : `${activeConversation.title} is online`}</div></div><ChatComposer onSend={onSend} replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} /></section><aside className="chat-info-panel"><div className="chat-info-header"><span className="muted-label">CHAT DETAILS</span><button className="icon-button"><X size={15} /></button></div><div className="chat-cover"><div className="chat-cover-mark"><MessageCircle size={23} /></div><strong>{activeConversation.kind === "group" ? activeGroup.name : activeConversation.title}</strong><span>{activeConversation.kind === "group" ? "8 members" : "Private conversation"}</span></div><div className="detail-row"><Image size={15} /><span>Shared media</span><b>12</b></div><div className="detail-row"><File size={15} /><span>Files and links</span><b>4</b></div><div className="detail-row"><Palette size={15} /><span>Theme</span><b>{chatTheme === "default" ? "Lime" : chatTheme}</b></div><div className="detail-tip"><Sparkles size={15} /><span>Send <b>“add dinner”</b> to create a ৳ expense from chat.</span></div></aside></div></>; }
+  const [search, setSearch] = useState("");
+  const [inboxMenu, setInboxMenu] = useState(false);
+  const [toolbarMenu, setToolbarMenu] = useState(false);
+  const [detailsVisible, setDetailsVisible] = useState(true);
+  const [gallery, setGallery] = useState<"media" | "files" | null>(null);
+  const directMember = chatMembers.find((member) => member.id === activeConversation.memberId);
+  const query = search.trim().toLowerCase();
+  const filteredConversations = conversations.filter((item) => !query || `${item.title} ${item.lastMessage}`.toLowerCase().includes(query));
+  const filteredPeople = chatMembers.filter((member) => member.id !== directMember?.id && (!query || `${member.name} ${member.profile.status}`.toLowerCase().includes(query)));
+  const media = chat.flatMap((message) => (message.attachments ?? []).filter((attachment) => attachment.kind !== "file"));
+  const files = chat.flatMap((message) => (message.attachments ?? []).filter((attachment) => attachment.kind === "file"));
+  const links = chat.flatMap((message) => message.message.match(/https?:\/\/[^\s]+/g) ?? []);
+  const nextTheme = () => chatTheme === "default" ? "midnight" : chatTheme === "midnight" ? "soft" : "default";
+  const showGallery = (kind: "media" | "files") => { setGallery(kind); setDetailsVisible(true); setToolbarMenu(false); };
+  return <>
+    <div className="page-header chat-page-header"><div><div className="eyebrow muted"><span className="eyebrow-dot" /> REAL-TIME MESSAGING</div><h1>{activeConversation.kind === "group" ? "Talk it out" : `DM with ${activeConversation.title}`} <span>⌁</span></h1><p>Messages, replies, reactions, and durable shared files in one thread.</p></div><div className="online-label">{activeConversation.kind === "group" ? `${chatMembers.length || activeGroup.members} members` : activeConversation.subtitle}</div></div>
+    <div className={`messenger-shell chat-theme-${chatTheme} ${detailsVisible ? "" : "details-hidden"}`}>
+      <aside className="conversation-rail">
+        <div className="conversation-heading"><div><span className="muted-label">MESSAGES</span><h2>Inbox</h2></div><div className="menu-wrap"><button className="icon-button" onClick={() => setInboxMenu((open) => !open)} aria-label="Inbox actions"><MoreHorizontal size={17} /></button>{inboxMenu && <div className="chat-menu"><button onClick={() => { setSearch(""); setInboxMenu(false); }}>Show all conversations</button><button onClick={() => { void onMarkRead(); setInboxMenu(false); }}>Mark current thread read</button></div>}</div></div>
+        <label className="conversation-search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search chats and people" /></label>
+        {filteredConversations.map((item) => <button key={item.id} className={`conversation-item ${activeConversation.id === item.id || (item.kind === "group" && activeConversation.kind === "group") ? "active" : ""}`} onClick={() => onSelectConversation(item)}>{item.kind === "group" ? <span className="conversation-avatar group-avatar"><Split size={16} /></span> : <Avatar member={chatMembers.find((member) => member.id === item.memberId) ?? { initials: item.title.slice(0, 2).toUpperCase(), color: item.accent }} size="md" />}<span><strong>{item.kind === "group" ? activeGroup.name : item.title}</strong><small>{item.lastMessage}</small></span>{item.unread > 0 && <b>{item.unread}</b>}</button>)}
+        <div className="conversation-people"><span className="muted-label">GROUP PEOPLE</span>{filteredPeople.map((member) => <div className="people-row" key={member.id}><button onClick={() => onOpenProfile(member.id)}><Avatar member={member} size="sm" /><span>{member.name}</span></button><button className="people-message" onClick={() => onOpenDirect(member)} aria-label={`Message ${member.name}`}><MessageCircle size={13} /></button></div>)}</div>
+      </aside>
+      <section className="messenger-main">
+        <div className="messenger-toolbar"><button className="messenger-title" onClick={() => activeConversation.kind === "direct" ? onOpenProfile(activeConversation.memberId ?? "") : setDetailsVisible((visible) => !visible)}><span className="toolbar-avatar">{activeConversation.kind === "group" ? <Split size={15} /> : <Avatar member={directMember ?? { initials: activeConversation.title.slice(0, 2), color: activeConversation.accent }} size="sm" />}</span><span><strong>{activeConversation.title}</strong><small>{activeConversation.kind === "group" ? `${chatMembers.length} members` : activeConversation.subtitle}</small></span></button><div className="messenger-actions"><button className="icon-button" onClick={() => void onThemeChange(nextTheme())} title="Change chat theme"><Palette size={16} /></button><button className="icon-button" onClick={() => activeConversation.kind === "direct" ? onOpenProfile(activeConversation.memberId ?? "") : setDetailsVisible((visible) => !visible)} title={activeConversation.kind === "direct" ? "View profile" : "Toggle group details"}><UserRound size={16} /></button><div className="menu-wrap"><button className="icon-button" onClick={() => setToolbarMenu((open) => !open)} aria-label="Conversation actions"><MoreHorizontal size={16} /></button>{toolbarMenu && <div className="chat-menu toolbar-menu"><button onClick={() => { setDetailsVisible(true); setGallery(null); setToolbarMenu(false); }}>Conversation details</button><button onClick={() => { void onMarkRead(); setToolbarMenu(false); }}>Mark as read</button><button onClick={() => showGallery("media")}>Shared media</button><button onClick={() => showGallery("files")}>Files and links</button></div>}</div></div></div>
+        <div className="chat-messages messenger-messages">{chat.length ? chat.map((message) => <MessageBubble key={message.id} message={message} members={chatMembers} onReact={onReact} onReply={() => setReplyTarget(message)} onOpenProfile={onOpenProfile} onSelect={() => setSelectedMessage(selectedMessage === message.id ? null : message.id)} selected={selectedMessage === message.id} />) : <div className="chat-empty">No messages yet. Start the conversation.</div>}{typingNames.length > 0 && <div className="typing-indicator"><span /><span /><span /> {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…</div>}</div>
+        <ChatComposer onSend={onSend} onUpload={onUpload} onTyping={onTyping} replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />
+      </section>
+      {detailsVisible && <aside className="chat-info-panel"><div className="chat-info-header"><span className="muted-label">CHAT DETAILS</span><button className="icon-button" onClick={() => setDetailsVisible(false)} aria-label="Close chat details"><X size={15} /></button></div><div className="chat-cover"><div className="chat-cover-mark"><MessageCircle size={23} /></div><strong>{activeConversation.kind === "group" ? activeGroup.name : activeConversation.title}</strong><span>{activeConversation.kind === "group" ? `${chatMembers.length || activeGroup.members} members` : "Private conversation"}</span></div><button className={`detail-row ${gallery === "media" ? "active" : ""}`} onClick={() => setGallery(gallery === "media" ? null : "media")}><Image size={15} /><span>Shared media</span><b>{media.length}</b></button><button className={`detail-row ${gallery === "files" ? "active" : ""}`} onClick={() => setGallery(gallery === "files" ? null : "files")}><File size={15} /><span>Files and links</span><b>{files.length + links.length}</b></button><button className="detail-row" onClick={() => void onThemeChange(nextTheme())}><Palette size={15} /><span>Theme</span><b>{chatTheme === "default" ? "Lime" : chatTheme}</b></button>{gallery === "media" && <div className="detail-gallery">{media.length ? media.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} compact />) : <small>No shared media in this thread.</small>}</div>}{gallery === "files" && <div className="detail-gallery">{files.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} compact />)}{links.map((link) => <a key={link} href={link} target="_blank" rel="noreferrer"><FileText size={13} />{link}</a>)}{files.length + links.length === 0 && <small>No files or links in this thread.</small>}</div>}</aside>}
+    </div>
+  </>;
+}
 
-function MessageBubble({ message, onReact, onReply, onOpenProfile, onSelect, selected }: { message: ChatMessage; onReact: (id: string, emoji: string) => void; onReply: () => void; onOpenProfile: (id: string) => void; onSelect: () => void; selected: boolean }) { const member = members.find((item) => item.id === message.senderId); return <div className={`chat-message messenger-message ${message.mine ? "mine" : ""}`} onClick={onSelect}><button onClick={(event) => { event.stopPropagation(); onOpenProfile(message.senderId); }}><Avatar member={member ?? { initials: message.initials, color: message.color }} size="sm" /></button><div className="message-column"><span className="message-meta"><strong>{message.member}</strong><small>{message.time}</small></span>{message.replyTo && <div className="reply-preview"><Reply size={12} /> replying to an earlier message</div>}<p>{message.message}</p>{message.attachments?.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} />)}<div className="reaction-row">{(message.reactions ?? []).map((reaction) => <button key={reaction.emoji} onClick={(event) => { event.stopPropagation(); onReact(message.id, reaction.emoji); }}>{reaction.emoji} {reaction.count}</button>)}<button onClick={(event) => { event.stopPropagation(); onReact(message.id, "👍"); }}>＋</button></div>{selected && <div className="message-actions"><button onClick={(event) => { event.stopPropagation(); onReact(message.id, "❤️"); }}>❤️</button><button onClick={(event) => { event.stopPropagation(); onReact(message.id, "😂"); }}>😂</button><button onClick={(event) => { event.stopPropagation(); onReply(); }}>Reply</button></div>}{message.mine && <small className="read-receipt">{message.read ? "Seen" : "Delivered"}</small>}</div></div>; }
-function AttachmentPreview({ attachment }: { attachment: ChatAttachment }) { return <div className={`attachment-preview attachment-${attachment.kind}`}>{attachment.kind === "image" && <img src={attachment.url} alt={attachment.name} />}{attachment.kind === "video" && <div className="video-thumb"><Video size={24} /><span>Video</span></div>}{attachment.kind === "gif" && <div className="gif-thumb">GIF</div>}{attachment.kind === "file" && <div className="file-thumb"><File size={20} /><span>{attachment.name}<small>{attachment.size}</small></span><Download size={15} /></div>}<span className="attachment-name">{attachment.name}</span></div>; }
-function ChatComposer({ onSend, replyTarget, onClearReply }: { onSend: (message: string, attachments?: ChatAttachment[], replyTo?: string) => void; replyTarget?: ChatMessage | null; onClearReply?: () => void }) { const [value, setValue] = useState(""); const [showEmoji, setShowEmoji] = useState(false); const fileRef = useRef<HTMLInputElement | null>(null); const submit = (event: FormEvent) => { event.preventDefault(); onSend(value, [], replyTarget?.id); setValue(""); onClearReply?.(); }; const addEmoji = (emoji: string) => setValue((current) => current + emoji); const onFile = (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; const kind: AttachmentKind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "file"; onSend(value, [{ id: crypto.randomUUID(), kind, name: file.name, url: URL.createObjectURL(file), size: `${Math.max(file.size / 1024, 1).toFixed(0)} KB` }], replyTarget?.id); setValue(""); onClearReply?.(); event.target.value = ""; }; return <form className="chat-composer messenger-composer" onSubmit={submit}>{replyTarget && <div className="composer-reply"><Reply size={13} /> Replying to {replyTarget.member}<button type="button" onClick={onClearReply}><X size={13} /></button></div>}<div className="composer-row"><input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip" hidden onChange={onFile} /><button type="button" onClick={() => fileRef.current?.click()} title="Attach file"><Paperclip size={17} /></button><button type="button" onClick={() => fileRef.current?.click()} title="Share photo or video"><Image size={17} /></button><input value={value} onChange={(event) => setValue(event.target.value)} placeholder="Write a message…" /><button type="button" className={showEmoji ? "active" : ""} onClick={() => setShowEmoji((current) => !current)} title="Emoji picker"><Smile size={18} /></button><button type="button" onClick={() => onSend("", [{ id: crypto.randomUUID(), kind: "gif", name: "reaction.gif", url: "https://media.giphy.com/media/3o7TKsQ8UQ4N7j2m7y/giphy.gif" }])} title="Send GIF"><span className="gif-button">GIF</span></button><button type="submit" className="send-button"><Send size={16} /></button></div>{showEmoji && <div className="emoji-picker">{["👍", "❤️", "😂", "🔥", "🥳", "👏", "🙌", "😅", "💸", "✨", "👀", "✅"].map((emoji) => <button type="button" key={emoji} onClick={() => addEmoji(emoji)}>{emoji}</button>)}</div>}</form>; }
+function MessageBubble({ message, members: chatMembers, onReact, onReply, onOpenProfile, onSelect, selected }: { message: ChatMessage; members: Member[]; onReact: (id: string, emoji: string) => Promise<void>; onReply: () => void; onOpenProfile: (id: string) => void; onSelect: () => void; selected: boolean }) {
+  const member = chatMembers.find((item) => item.id === message.senderId);
+  return <div className={`chat-message messenger-message ${message.mine ? "mine" : ""}`} onClick={onSelect}><button onClick={(event) => { event.stopPropagation(); onOpenProfile(message.senderId); }} aria-label={`Open ${message.member}'s profile`}><Avatar member={member ?? { initials: message.initials, color: message.color }} size="sm" /></button><div className="message-column"><span className="message-meta"><strong>{message.member}</strong><small>{message.time}</small></span>{message.replyTo && <div className="reply-preview"><Reply size={12} /><span><b>{message.replyPreview?.authorName ?? "Earlier message"}</b>{message.replyPreview?.body || "Referenced message"}</span></div>}{message.message && <p>{message.message}</p>}{message.attachments?.map((attachment) => <AttachmentPreview key={attachment.id} attachment={attachment} />)}<div className="reaction-row">{(message.reactions ?? []).map((reaction) => <button className={reaction.reacted ? "reacted" : ""} key={reaction.emoji} onClick={(event) => { event.stopPropagation(); void onReact(message.id, reaction.emoji); }}>{reaction.emoji} {reaction.count}</button>)}<button onClick={(event) => { event.stopPropagation(); void onReact(message.id, "👍"); }} aria-label="Toggle thumbs up reaction">＋</button></div>{selected && <div className="message-actions"><button onClick={(event) => { event.stopPropagation(); void onReact(message.id, "❤️"); }}>❤️</button><button onClick={(event) => { event.stopPropagation(); void onReact(message.id, "😂"); }}>😂</button><button onClick={(event) => { event.stopPropagation(); onReply(); }}>Reply</button></div>}{message.mine && <small className="read-receipt">{message.read ? "Seen" : "Delivered"}</small>}</div></div>;
+}
+function AttachmentPreview({ attachment, compact = false }: { attachment: ChatAttachment; compact?: boolean }) {
+  const size = typeof attachment.size === "number" ? `${Math.max(attachment.size / 1024, 1).toFixed(0)} KB` : attachment.size;
+  return <div className={`attachment-preview attachment-${attachment.kind} ${compact ? "compact" : ""}`}>{attachment.kind === "image" && <a href={attachment.url} target="_blank" rel="noreferrer"><img src={attachment.url} alt={attachment.name} /></a>}{attachment.kind === "video" && <video controls preload="metadata" src={attachment.url}>Your browser cannot play this video.</video>}{attachment.kind === "gif" && <a href={attachment.url} target="_blank" rel="noreferrer"><img src={attachment.url} alt={attachment.name} /></a>}{attachment.kind === "file" && <a className="file-thumb" href={attachment.url} target="_blank" rel="noreferrer" download><File size={20} /><span>{attachment.name}<small>{size}</small></span><Download size={15} /></a>}<a className="attachment-name" href={attachment.url} target="_blank" rel="noreferrer">{attachment.name}</a></div>;
+}
+function ChatComposer({ onSend, onUpload, onTyping, replyTarget, onClearReply }: { onSend: (message: string, attachments?: ChatAttachment[], replyTo?: string) => Promise<void>; onUpload: (file: File) => Promise<ChatAttachment>; onTyping: (isTyping: boolean) => void; replyTarget?: ChatMessage | null; onClearReply?: () => void }) {
+  const [value, setValue] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const mediaRef = useRef<HTMLInputElement | null>(null);
+  const typingTimer = useRef<number | undefined>(undefined);
+  const finish = () => { setValue(""); setError(""); setShowEmoji(false); onClearReply?.(); onTyping(false); };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || (!value.trim() && !replyTarget)) return;
+    setBusy(true); setError("");
+    try { await onSend(value, [], replyTarget?.id); finish(); }
+    catch (sendError) { setError(sendError instanceof Error ? sendError.message : "Message could not be sent."); }
+    finally { setBusy(false); }
+  };
+  const onFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || busy) return;
+    setBusy(true); setError("");
+    try { const attachment = await onUpload(file); await onSend(value, [attachment], replyTarget?.id); finish(); }
+    catch (sendError) { setError(sendError instanceof Error ? sendError.message : "File could not be shared."); }
+    finally { setBusy(false); event.target.value = ""; }
+  };
+  const updateValue = (next: string) => {
+    setValue(next); onTyping(Boolean(next));
+    window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => onTyping(false), 1200);
+  };
+  const addEmoji = (emoji: string) => updateValue(value + emoji);
+  const sendGif = async () => {
+    if (busy) return;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140"><rect width="100%" height="100%" rx="18" fill="#182b38"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="58">🎉</text></svg>`;
+    const attachment: ChatAttachment = { id: crypto.randomUUID(), kind: "gif", name: "celebration.svg", url: `data:image/svg+xml,${encodeURIComponent(svg)}`, size: svg.length };
+    setBusy(true); setError("");
+    try { await onSend(value, [attachment], replyTarget?.id); finish(); }
+    catch (sendError) { setError(sendError instanceof Error ? sendError.message : "GIF could not be sent."); }
+    finally { setBusy(false); }
+  };
+  return <form className="chat-composer messenger-composer" onSubmit={submit}>{replyTarget && <div className="composer-reply"><Reply size={13} /> Replying to {replyTarget.member}<button type="button" onClick={onClearReply} disabled={busy}><X size={13} /></button></div>}{error && <div className="composer-error">{error}</div>}<div className="composer-row"><input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" hidden onChange={onFile} /><input ref={mediaRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime" hidden onChange={onFile} /><button type="button" onClick={() => fileRef.current?.click()} title="Attach document or archive" disabled={busy}><Paperclip size={17} /></button><button type="button" onClick={() => mediaRef.current?.click()} title="Share photo or video" disabled={busy}><Image size={17} /></button><input value={value} onChange={(event) => updateValue(event.target.value)} placeholder="Write a message…" disabled={busy} /><button type="button" className={showEmoji ? "active" : ""} onClick={() => setShowEmoji((current) => !current)} title="Emoji picker" disabled={busy}><Smile size={18} /></button><button type="button" onClick={() => void sendGif()} title="Send celebration GIF" disabled={busy}><span className="gif-button">GIF</span></button><button type="submit" className="send-button" disabled={busy || !value.trim()} aria-label="Send message">{busy ? <span className="sending-dot" /> : <Send size={16} />}</button></div>{showEmoji && <div className="emoji-picker">{["👍", "❤️", "😂", "🔥", "🥳", "👏", "🙌", "😅", "💸", "✨", "👀", "✅"].map((emoji) => <button type="button" key={emoji} onClick={() => addEmoji(emoji)}>{emoji}</button>)}</div>}</form>;
+}
 
-function ProfileDrawer({ member, avatarUrl, onClose, onMessage, onAvatarChange }: { member: Member; avatarUrl?: string; onClose: () => void; onMessage: () => void; onAvatarChange: (url: string) => void }) { const fileRef = useRef<HTMLInputElement | null>(null); return <div className="drawer-backdrop" onClick={onClose}><aside className="profile-drawer" onClick={(event) => event.stopPropagation()}><button className="icon-button drawer-close" onClick={onClose}><X size={17} /></button><div className="profile-hero"><button className="profile-avatar-button" onClick={() => member.id === "me" && fileRef.current?.click()}><Avatar member={member} size="lg" avatarUrl={avatarUrl} />{member.id === "me" && <span><Image size={13} /></span>}</button><input ref={fileRef} hidden type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) onAvatarChange(URL.createObjectURL(file)); }} /><h2>{member.name}</h2><p>{member.profile.status}</p></div><div className="profile-copy"><span className="muted-label">ABOUT</span><p>{member.profile.bio}</p><div className="profile-stat"><span>Profile picture</span><strong>{member.id === "me" ? "Tap avatar to update" : "Visible to group"}</strong></div><div className="profile-stat"><span>Shared groups</span><strong>3 active groups</strong></div></div><div className="profile-actions">{member.id !== "me" && <button className="primary-button" onClick={onMessage}><MessageCircle size={15} /> Message privately</button>}{member.id === "me" && <button className="secondary-button" onClick={() => fileRef.current?.click()}><Image size={15} /> Update profile picture</button>}<button className="outline-button" onClick={onClose}>Close</button></div></aside></div>; }
+function ProfileDrawer({ member, isSelf, avatarUrl, onClose, onMessage, onAvatarChange }: { member: Member; isSelf: boolean; avatarUrl?: string; onClose: () => void; onMessage: () => void; onAvatarChange: (url: string) => void }) { const fileRef = useRef<HTMLInputElement | null>(null); const avatar = <Avatar member={member} size="lg" avatarUrl={avatarUrl} />; return <div className="drawer-backdrop" onClick={onClose}><aside className="profile-drawer" onClick={(event) => event.stopPropagation()}><button className="icon-button drawer-close" onClick={onClose}><X size={17} /></button><div className="profile-hero">{isSelf ? <button className="profile-avatar-button" onClick={() => fileRef.current?.click()}>{avatar}<span><Image size={13} /></span></button> : <div className="profile-avatar-button">{avatar}</div>}<input ref={fileRef} hidden type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) onAvatarChange(URL.createObjectURL(file)); }} /><h2>{member.name}</h2><p>{member.profile.status}</p></div><div className="profile-copy"><span className="muted-label">ABOUT</span><p>{member.profile.bio}</p><div className="profile-stat"><span>Profile picture</span><strong>{isSelf ? "Tap avatar to update" : "Visible to group"}</strong></div></div><div className="profile-actions">{!isSelf && <button className="primary-button" onClick={onMessage}><MessageCircle size={15} /> Message privately</button>}{isSelf && <button className="secondary-button" onClick={() => fileRef.current?.click()}><Image size={15} /> Update profile picture</button>}<button className="outline-button" onClick={onClose}>Close</button></div></aside></div>; }
 function Notifications({ onClose, onAction }: { onClose: () => void; onAction: (message: string) => void }) { return <div className="notification-popover"><div><span className="muted-label">NOTIFICATIONS</span><button className="icon-button" onClick={onClose}><X size={15} /></button></div><button onClick={() => onAction("Opened Tisha's hotel expense")}>Tisha added Hotel at Gulshan <small>12 min ago</small></button><button onClick={() => onAction("Opened river cruise vote")}>River cruise vote closes in 4 hours <small>Today</small></button><button onClick={() => onAction("Opened private message")}>Nabil sent you a receipt <small>09:42</small></button></div>; }
 function ExpenseModal({ onClose, onSave, memberOptions, currentUserId }: { onClose: () => void; onSave: (expense: Expense) => void; memberOptions: { user_id: number; name: string; initials: string; role: string }[]; currentUserId: number }) {
   const [title, setTitle] = useState("");

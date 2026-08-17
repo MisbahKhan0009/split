@@ -9,10 +9,11 @@ from django.core.asgi import get_asgi_application
 
 django_asgi_application = get_asgi_application()
 
+from config.jwt_websocket import JWTWebSocketAuthMiddleware
 from apps.core.routing import websocket_urlpatterns
 
 
 application = ProtocolTypeRouter({
     "http": django_asgi_application,
-    "websocket": AuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
+    "websocket": AuthMiddlewareStack(JWTWebSocketAuthMiddleware(URLRouter(websocket_urlpatterns))),
 })

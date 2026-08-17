@@ -1,15 +1,20 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
+import uuid
 
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .chat import broadcast_message_event, is_active_member, normalize_reactions, share_active_group, toggle_reaction, visible_messages
 from .models import (
     ActivityEvent, Budget, ChatMessage, Expense, ExpenseComment, ExpenseParticipant,
     Group, GroupEvent, GroupMembership, GroupComment, GroupInvitation, Notification, Poll, PollOption,
@@ -24,7 +29,7 @@ def user_display(user):
 
 
 def member_of(user, group):
-    return group.members.filter(id=user.id).exists()
+    return GroupMembership.objects.filter(user=user, group=group, is_active=True).exists()
 
 
 def log_activity(group, actor, action, target, metadata=None):
@@ -107,7 +112,10 @@ class MemberSerializer(serializers.ModelSerializer):
         return "".join(part[0] for part in user_display(obj.user).split()[:2]).upper()
 
     def get_profile(self, obj):
-        profile, _ = UserProfile.objects.get_or_create(user=obj.user)
+        try:
+            profile = obj.user.profile
+        except UserProfile.DoesNotExist:
+            profile, _ = UserProfile.objects.get_or_create(user=obj.user)
         return ProfileSerializer(profile, context=self.context).data
 
 
@@ -121,10 +129,11 @@ class GroupSerializer(serializers.ModelSerializer):
         read_only_fields = ["owner", "currency", "currency_symbol"]
 
     def get_member_count(self, obj):
-        return obj.members.count()
+        return obj.groupmembership_set.filter(is_active=True).count()
 
     def get_members_detail(self, obj):
-        return MemberSerializer(obj.groupmembership_set.select_related("user"), many=True, context=self.context).data
+        memberships = obj.groupmembership_set.filter(is_active=True).select_related("user", "user__profile")
+        return MemberSerializer(memberships, many=True, context=self.context).data
 
     def create(self, validated_data):
         user = self.context["request"].user
@@ -345,10 +354,12 @@ class ChatMessageSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_initials = serializers.SerializerMethodField()
     recipient_name = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
+    reply_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatMessage
-        fields = ["id", "group", "author", "author_name", "author_initials", "recipient", "recipient_name", "kind", "body", "attachments", "reactions", "reply_to", "related_expense", "read_at", "created_at"]
+        fields = ["id", "group", "author", "author_name", "author_initials", "recipient", "recipient_name", "kind", "body", "attachments", "reactions", "reply_to", "reply_preview", "related_expense", "read_at", "created_at"]
         read_only_fields = ["author", "author_name", "author_initials", "created_at"]
 
     def get_author_name(self, obj):
@@ -359,6 +370,57 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
     def get_recipient_name(self, obj):
         return user_display(obj.recipient) if obj.recipient else None
+
+    def get_reactions(self, obj):
+        request = self.context.get("request")
+        user_id = request.user.id if request and request.user.is_authenticated else None
+        return normalize_reactions(obj.reactions, user_id)
+
+    def get_reply_preview(self, obj):
+        if not obj.reply_to_id:
+            return None
+        return {
+            "id": obj.reply_to_id,
+            "author_name": user_display(obj.reply_to.author),
+            "body": obj.reply_to.body,
+        }
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = request.user if request else None
+        instance = self.instance
+        kind = attrs.get("kind", instance.kind if instance else ChatMessage.Kind.GROUP)
+        group = attrs.get("group", instance.group if instance else None)
+        recipient = attrs.get("recipient", instance.recipient if instance else None)
+        body = str(attrs.get("body", instance.body if instance else "") or "").strip()
+        attachments = attrs.get("attachments", instance.attachments if instance else [])
+        reply_to = attrs.get("reply_to", instance.reply_to if instance else None)
+
+        if kind == ChatMessage.Kind.GROUP:
+            if not group or recipient:
+                raise serializers.ValidationError("Group messages require a group and cannot have a recipient.")
+            if not user or not is_active_member(user.id, group.id):
+                raise serializers.ValidationError({"group": "You must be an active group member."})
+        elif kind == ChatMessage.Kind.DIRECT:
+            if not recipient or group:
+                raise serializers.ValidationError("Direct messages require a recipient and cannot have a group.")
+            if not user or recipient.id == user.id or not share_active_group(user.id, recipient.id):
+                raise serializers.ValidationError({"recipient": "You can only message an active shared-group member."})
+        else:
+            raise serializers.ValidationError({"kind": "Unsupported message kind."})
+
+        if not body and not attachments:
+            raise serializers.ValidationError("A message needs text or at least one attachment.")
+        if not isinstance(attachments, list):
+            raise serializers.ValidationError({"attachments": "Attachments must be a list."})
+        if reply_to:
+            same_group = kind == ChatMessage.Kind.GROUP and reply_to.kind == kind and reply_to.group_id == group.id
+            direct_users = {user.id, recipient.id} if kind == ChatMessage.Kind.DIRECT else set()
+            reply_users = {reply_to.author_id, reply_to.recipient_id} if reply_to.kind == ChatMessage.Kind.DIRECT else set()
+            if not same_group and direct_users != reply_users:
+                raise serializers.ValidationError({"reply_to": "Replies must reference the same conversation."})
+        attrs["body"] = body
+        return attrs
 
 
 class UserDirectoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -668,39 +730,88 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
+        queryset = visible_messages(self.request.user)
         group_id = self.request.query_params.get("group")
         recipient_id = self.request.query_params.get("recipient")
         if group_id:
-            return ChatMessage.objects.filter(group_id=group_id, group__members=user).select_related("author", "recipient")
-        if recipient_id:
-            return ChatMessage.objects.filter(kind=ChatMessage.Kind.DIRECT).filter(Q(author=user, recipient_id=recipient_id) | Q(author_id=recipient_id, recipient=user)).select_related("author", "recipient")
-        return ChatMessage.objects.filter(Q(author=user) | Q(recipient=user)).select_related("author", "recipient")
+            queryset = queryset.filter(kind=ChatMessage.Kind.GROUP, group_id=group_id)
+        elif recipient_id:
+            queryset = queryset.filter(kind=ChatMessage.Kind.DIRECT).filter(
+                Q(author=self.request.user, recipient_id=recipient_id)
+                | Q(author_id=recipient_id, recipient=self.request.user)
+            )
+        return queryset.select_related("author", "recipient", "reply_to", "reply_to__author")
 
     def perform_create(self, serializer):
-        kind = serializer.validated_data.get("kind", ChatMessage.Kind.GROUP)
-        group = serializer.validated_data.get("group")
-        recipient = serializer.validated_data.get("recipient")
-        if kind == ChatMessage.Kind.GROUP and (not group or not member_of(self.request.user, group)):
-            raise serializers.ValidationError({"group": "You must be an active group member."})
-        if kind == ChatMessage.Kind.DIRECT and (not recipient or not self.request.user.shared_groups.filter(members=recipient).exists()):
-            raise serializers.ValidationError({"recipient": "You can only message a shared group member."})
-        serializer.save(author=self.request.user)
+        message = serializer.save(author=self.request.user)
+        payload = self.get_serializer(message).data
+        transaction.on_commit(lambda: broadcast_message_event(message, "message", {"message": payload}))
 
     @action(detail=True, methods=["post"])
     def react(self, request, pk=None):
-        message = self.get_object()
-        emoji = request.data.get("emoji", "👍")
-        reactions = [reaction for reaction in message.reactions if reaction.get("emoji") != emoji]
-        existing = next((reaction for reaction in message.reactions if reaction.get("emoji") == emoji), None)
-        reactions.append({"emoji": emoji, "count": (existing.get("count", 0) if existing else 0) + 1, "user_id": request.user.id})
-        message.reactions = reactions
-        message.save(update_fields=["reactions", "updated_at"])
-        return Response(self.get_serializer(message).data)
+        with transaction.atomic():
+            message = self.get_queryset().select_for_update().get(pk=pk)
+            toggle_reaction(message, request.data.get("emoji", "👍"), request.user.id)
+            payload = self.get_serializer(message).data
+            transaction.on_commit(lambda: broadcast_message_event(message, "reaction", {"message": payload}))
+        return Response(payload)
 
     @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
         message = self.get_object()
-        message.read_at = timezone.now()
-        message.save(update_fields=["read_at", "updated_at"])
-        return Response(self.get_serializer(message).data)
+        if message.author_id != request.user.id and not message.read_at:
+            message.read_at = timezone.now()
+            message.save(update_fields=["read_at", "updated_at"])
+        payload = self.get_serializer(message).data
+        transaction.on_commit(lambda: broadcast_message_event(message, "read", {"message": payload, "user_id": request.user.id}))
+        return Response(payload)
+
+    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        upload = request.FILES.get("file")
+        group_id = request.data.get("group")
+        recipient_id = request.data.get("recipient")
+        if bool(group_id) == bool(recipient_id):
+            raise serializers.ValidationError("Provide exactly one group or recipient target.")
+        if group_id and not is_active_member(request.user.id, group_id):
+            raise serializers.ValidationError({"group": "You must be an active group member."})
+        if recipient_id:
+            try:
+                recipient_id = int(recipient_id)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({"recipient": "Invalid recipient."})
+            if recipient_id == request.user.id or not share_active_group(request.user.id, recipient_id):
+                raise serializers.ValidationError({"recipient": "You can only upload to an active shared-group conversation."})
+        if not upload:
+            raise serializers.ValidationError({"file": "Choose a file to upload."})
+        if upload.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError({"file": "Files must be 10 MB or smaller."})
+
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".mov", ".pdf", ".doc", ".docx", ".zip"}
+        allowed_mimes = {
+            "image/jpeg", "image/png", "image/gif", "image/webp",
+            "video/mp4", "video/webm", "video/quicktime", "application/pdf",
+            "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/zip", "application/x-zip-compressed", "application/octet-stream",
+        }
+        extension = Path(upload.name).suffix.lower()
+        content_type = (upload.content_type or "application/octet-stream").lower()
+        if extension not in allowed_extensions or content_type not in allowed_mimes:
+            raise serializers.ValidationError({"file": "Unsupported file type."})
+
+        stored_name = default_storage.save(f"chat/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{extension}", upload)
+        url = request.build_absolute_uri(default_storage.url(stored_name))
+        if content_type.startswith("image/"):
+            kind = "gif" if extension == ".gif" else "image"
+        elif content_type.startswith("video/"):
+            kind = "video"
+        else:
+            kind = "file"
+        return Response({
+            "id": uuid.uuid4().hex,
+            "kind": kind,
+            "name": Path(upload.name).name,
+            "url": url,
+            "size": upload.size,
+            "content_type": content_type,
+        }, status=status.HTTP_201_CREATED)
