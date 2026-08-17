@@ -1,5 +1,8 @@
 from rest_framework.routers import DefaultRouter
-from .api import ChatMessageViewSet, ExpenseViewSet, GroupViewSet, ProfileViewSet, SettlementViewSet
+from .api import ProfileViewSet
+from apps.finance.api import ExpenseViewSet, SettlementViewSet
+from apps.groups.api import GroupViewSet
+from apps.messaging.api import ChatMessageViewSet
 
 router = DefaultRouter()
 router.register("groups", GroupViewSet, basename="group")

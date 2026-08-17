@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
-from apps.core.auth import CurrentUserView, LoginView, RegisterView
+from apps.accounts.auth import CurrentUserView, LoginView, RegisterView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [

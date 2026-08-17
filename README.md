@@ -32,10 +32,13 @@ splitwise-plus/
 │   ├── src/types/index.ts    # shared frontend contracts
 │   └── src/styles.css        # liquid-glass and Messenger UI system
 ├── backend/
-│   ├── apps/core/models.py   # BDT groups, profiles, expenses, messages
-│   ├── apps/core/api.py      # REST serializers and viewsets
-│   ├── apps/core/consumers.py# group/direct Channels consumers
-│   ├── apps/core/routing.py  # WebSocket routes
+│   ├── apps/accounts/        # authentication domain facade and app config
+│   ├── apps/groups/          # group domain API surface and app config
+│   ├── apps/finance/         # expense and settlement API surface
+│   ├── apps/messaging/       # chat API and realtime consumer surface
+│   ├── apps/planning/        # itinerary/task service boundary
+│   ├── apps/core/            # shared models, compatibility APIs, migrations
+│   ├── apps/core/management/commands/seed_demo.py # repeatable BDT seed data
 │   └── requirements.txt
 └── docs/
 ```
@@ -59,6 +62,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py seed_demo
 python manage.py runserver
 ```
 
@@ -96,4 +100,4 @@ cd ../backend && DJANGO_ALLOWED_HOSTS='localhost,127.0.0.1,testserver' python3 s
 git diff --check
 ```
 
-The browser smoke notes in `docs/browser-smoke-test.md` cover the BDT landing page, updated identity, workspace, expense flow, and Messenger-style messaging screen.
+The browser smoke notes in `docs/browser-smoke-test.md` cover the BDT landing page, updated identity, workspace, group dropdown switching, direct group-chat access, expense flow, and Messenger-style messaging screen. Run `python manage.py seed_demo` whenever a clean development database needs realistic groups, expenses, settlements, profiles, and chat messages.

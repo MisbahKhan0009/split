@@ -16,6 +16,11 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "channels",
+    "apps.accounts",
+    "apps.groups",
+    "apps.finance",
+    "apps.messaging",
+    "apps.planning",
     "apps.core",
 ]
 
