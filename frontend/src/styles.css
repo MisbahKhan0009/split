@@ -5193,3 +5193,95 @@ h2 em {
     flex-direction: column;
   }
 }
+
+.session-list,
+.activity-log-list {
+  display: grid;
+  gap: 8px;
+}
+.session-row,
+.settings-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.session-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--lime);
+  background: var(--panel-soft);
+}
+.session-copy,
+.settings-activity-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.session-copy strong,
+.session-copy small,
+.settings-activity-row strong,
+.settings-activity-row small {
+  display: block;
+}
+.session-copy strong,
+.settings-activity-row strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-copy small,
+.settings-activity-row small {
+  margin-top: 3px;
+  color: var(--dim);
+  font-size: 10px;
+}
+.session-revoke-button {
+  flex: 0 0 auto;
+  color: #ffb1b1;
+}
+.settings-wide-button {
+  width: 100%;
+  margin-top: 12px;
+}
+.settings-inline-error {
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 157, 157, 0.3);
+  border-radius: 9px;
+  color: #ffb1b1;
+  background: rgba(255, 100, 100, 0.08);
+  font-size: 11px;
+}
+.settings-empty-state {
+  padding: 12px 0 3px;
+  color: var(--dim);
+  font-size: 11px;
+}
+.settings-activity-row {
+  align-items: flex-start;
+}
+.activity-log-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 4px rgba(183, 243, 107, 0.1);
+}
+@media (max-width: 520px) {
+  .session-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .session-revoke-button {
+    margin-left: 41px;
+  }
+}

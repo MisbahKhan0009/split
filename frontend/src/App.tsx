@@ -407,7 +407,12 @@ function App() {
     setShowLanding(false);
     notify(`Welcome to SplitWise+, ${payload.user.display_name}.`);
   };
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await api.revokeCurrentSession();
+    } catch {
+      // Local sign-out still completes if the current token has expired.
+    }
     clearSession();
     setAuthUser(null);
     setProfile(null);
@@ -2646,12 +2651,17 @@ function SettingsPage({
   ) => Promise<void>;
   onAvatarUpload: (file: File) => Promise<void>;
   onThemeChange: (theme: "dark" | "light") => void;
-  onSignOut: () => void;
+  onSignOut: () => void | Promise<void>;
 }) {
   const [bio, setBio] = useState(profile?.bio ?? "");
   const [status, setStatus] = useState(profile?.status ?? "Available");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [activityItems, setActivityItems] = useState<import("./lib/api").AccountActivityItem[]>([]);
+  const [sessions, setSessions] = useState<import("./lib/api").AccountSession[]>([]);
+  const [accountDataLoading, setAccountDataLoading] = useState(true);
+  const [accountDataError, setAccountDataError] = useState("");
+  const [sessionAction, setSessionAction] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const initials =
     profile?.initials ||
@@ -2666,6 +2676,59 @@ function SettingsPage({
     setBio(profile?.bio ?? "");
     setStatus(profile?.status ?? "Available");
   }, [profile?.bio, profile?.status]);
+
+  const loadAccountData = async () => {
+    setAccountDataLoading(true);
+    setAccountDataError("");
+    try {
+      const [nextActivity, nextSessions] = await Promise.all([
+        api.accountActivity(),
+        api.accountSessions(),
+      ]);
+      setActivityItems(nextActivity);
+      setSessions(nextSessions);
+    } catch (requestError) {
+      setAccountDataError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not load account activity.",
+      );
+    } finally {
+      setAccountDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAccountData();
+  }, []);
+
+  const revokeSession = async (sessionId: string, current: boolean) => {
+    setSessionAction(sessionId);
+    try {
+      if (current) {
+        await onSignOut();
+        return;
+      }
+      await api.revokeSession(sessionId);
+      await loadAccountData();
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke this session.");
+    } finally {
+      setSessionAction("");
+    }
+  };
+
+  const revokeOtherSessions = async () => {
+    setSessionAction("all");
+    try {
+      await api.revokeAllSessions();
+      await loadAccountData();
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke other sessions.");
+    } finally {
+      setSessionAction("");
+    }
+  };
 
   const saveProfile = async (event: FormEvent) => {
     event.preventDefault();
@@ -2827,6 +2890,50 @@ function SettingsPage({
           <div className="glass-card settings-card account-details-card">
             <div className="section-heading">
               <div>
+                <span className="muted-label">SECURITY</span>
+                <h2>Active sessions</h2>
+              </div>
+              <button type="button" className="icon-button" onClick={() => void loadAccountData()} title="Refresh sessions">
+                <Activity size={16} />
+              </button>
+            </div>
+            <p className="settings-description">Review where your account is signed in and revoke anything unfamiliar.</p>
+            {accountDataError && <p className="settings-inline-error">{accountDataError}</p>}
+            {accountDataLoading ? (
+              <p className="settings-empty-state">Loading active sessions…</p>
+            ) : sessions.length ? (
+              <div className="session-list">
+                {sessions.map((session) => (
+                  <div className="session-row" key={session.id}>
+                    <div className="session-icon"><UserRound size={16} /></div>
+                    <div className="session-copy">
+                      <strong>{session.device_label}{session.is_current ? " · This device" : ""}</strong>
+                      <small>Last active {new Date(session.last_seen_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                      <small>{session.ip_address || "IP unavailable"}</small>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-button session-revoke-button"
+                      disabled={sessionAction === session.id}
+                      onClick={() => void revokeSession(session.id, session.is_current)}
+                    >
+                      {sessionAction === session.id ? "Revoking…" : session.is_current ? "Sign out" : "Revoke"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="settings-empty-state">No active sessions found.</p>
+            )}
+            {sessions.some((session) => !session.is_current) && (
+              <button type="button" className="outline-button settings-wide-button" disabled={sessionAction === "all"} onClick={() => void revokeOtherSessions()}>
+                {sessionAction === "all" ? "Revoking…" : "Revoke all other sessions"}
+              </button>
+            )}
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
                 <span className="muted-label">ACCOUNT</span>
                 <h2>Account details</h2>
               </div>
@@ -2836,6 +2943,33 @@ function SettingsPage({
             <div className="settings-detail-row"><span>Username</span><strong>@{authUser.username}</strong></div>
             <div className="settings-detail-row"><span>Email</span><strong>{authUser.email || "Not added"}</strong></div>
             <p className="settings-description">Your account identity is managed through the secure sign-in flow.</p>
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">AUDIT TRAIL</span>
+                <h2>Recent activity</h2>
+              </div>
+              <Activity size={18} />
+            </div>
+            <p className="settings-description">A private record of sign-ins, profile changes, and session actions.</p>
+            {accountDataLoading ? (
+              <p className="settings-empty-state">Loading activity…</p>
+            ) : activityItems.length ? (
+              <div className="activity-log-list">
+                {activityItems.slice(0, 8).map((item) => (
+                  <div className="settings-activity-row" key={item.id}>
+                    <span className="activity-log-dot" />
+                    <div>
+                      <strong>{item.description}</strong>
+                      <small>{item.device_label} · {new Date(item.created_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="settings-empty-state">No account activity has been recorded yet.</p>
+            )}
           </div>
           <div className="glass-card settings-card danger-card">
             <div>

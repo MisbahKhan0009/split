@@ -25,6 +25,39 @@ class UserProfile(TimeStamped):
         return f"{self.user.username} profile"
 
 
+class UserSession(TimeStamped):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="account_sessions"
+    )
+    session_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    device_label = models.CharField(max_length=120, default="Web browser")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None
+
+
+class UserActivityLog(TimeStamped):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="account_activity"
+    )
+    action = models.CharField(max_length=80)
+    description = models.CharField(max_length=240)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device_label = models.CharField(max_length=120, default="Web browser")
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class Group(TimeStamped):
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True)
