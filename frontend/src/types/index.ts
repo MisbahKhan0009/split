@@ -1,4 +1,5 @@
-export type View = "dashboard" | "overview" | "expenses" | "settle" | "plan" | "chat";
+export type View =
+  "dashboard" | "overview" | "expenses" | "settle" | "plan" | "chat";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
 export type ChatKind = "group" | "direct";
 export type AttachmentKind = "image" | "video" | "file" | "gif";
@@ -94,7 +95,13 @@ export interface GroupMember {
   name: string;
   initials: string;
   role: string;
-  profile?: { bio: string; status: string; theme?: string; avatar?: string | null; updated_at?: string };
+  profile?: {
+    bio: string;
+    status: string;
+    theme?: string;
+    avatar?: string | null;
+    updated_at?: string;
+  };
 }
 
 export interface Group {

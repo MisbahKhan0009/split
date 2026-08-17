@@ -1,9 +1,20 @@
 from rest_framework.routers import DefaultRouter
 
 from .api import (
-    ActivityViewSet, BudgetViewSet, ChatMessageViewSet, ExpenseViewSet,
-    GroupCommentViewSet, GroupEventViewSet, GroupInvitationViewSet, GroupViewSet, NotificationViewSet,
-    PollViewSet, ProfileViewSet, RecurringExpenseViewSet, SettlementViewSet, UserDirectoryViewSet,
+    ActivityViewSet,
+    BudgetViewSet,
+    ChatMessageViewSet,
+    ExpenseViewSet,
+    GroupCommentViewSet,
+    GroupEventViewSet,
+    GroupInvitationViewSet,
+    GroupViewSet,
+    NotificationViewSet,
+    PollViewSet,
+    ProfileViewSet,
+    RecurringExpenseViewSet,
+    SettlementViewSet,
+    UserDirectoryViewSet,
 )
 
 router = DefaultRouter()
@@ -13,7 +24,9 @@ router.register("invitations", GroupInvitationViewSet, basename="invitation")
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("settlements", SettlementViewSet, basename="settlement")
 router.register("budgets", BudgetViewSet, basename="budget")
-router.register("recurring-expenses", RecurringExpenseViewSet, basename="recurring-expense")
+router.register(
+    "recurring-expenses", RecurringExpenseViewSet, basename="recurring-expense"
+)
 router.register("activity", ActivityViewSet, basename="activity")
 router.register("notifications", NotificationViewSet, basename="notification")
 router.register("polls", PollViewSet, basename="poll")

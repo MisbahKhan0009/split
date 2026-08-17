@@ -6,12 +6,18 @@ from .models import ChatMessage, GroupMembership
 
 
 def is_active_member(user_id, group_id):
-    return GroupMembership.objects.filter(user_id=user_id, group_id=group_id, is_active=True).exists()
+    return GroupMembership.objects.filter(
+        user_id=user_id, group_id=group_id, is_active=True
+    ).exists()
 
 
 def share_active_group(first_user_id, second_user_id):
-    first_groups = GroupMembership.objects.filter(user_id=first_user_id, is_active=True).values("group_id")
-    return GroupMembership.objects.filter(user_id=second_user_id, is_active=True, group_id__in=first_groups).exists()
+    first_groups = GroupMembership.objects.filter(
+        user_id=first_user_id, is_active=True
+    ).values("group_id")
+    return GroupMembership.objects.filter(
+        user_id=second_user_id, is_active=True, group_id__in=first_groups
+    ).exists()
 
 
 def direct_room_name(first_user_id, second_user_id):
@@ -26,7 +32,9 @@ def message_room_name(message):
 
 
 def visible_messages(user):
-    active_groups = GroupMembership.objects.filter(user=user, is_active=True).values("group_id")
+    active_groups = GroupMembership.objects.filter(user=user, is_active=True).values(
+        "group_id"
+    )
     return ChatMessage.objects.filter(
         Q(kind=ChatMessage.Kind.GROUP, group_id__in=active_groups)
         | Q(kind=ChatMessage.Kind.DIRECT, author=user)
@@ -62,16 +70,20 @@ def normalize_reactions(raw_reactions, current_user_id=None):
         except (TypeError, ValueError):
             raw_count = 0
         try:
-            legacy_count = max(int(raw.get("legacy_count", max(raw_count - len(user_ids), 0))), 0)
+            legacy_count = max(
+                int(raw.get("legacy_count", max(raw_count - len(user_ids), 0))), 0
+            )
         except (TypeError, ValueError):
             legacy_count = 0
-        normalized.append({
-            "emoji": emoji,
-            "count": legacy_count + len(user_ids),
-            "user_ids": user_ids,
-            "legacy_count": legacy_count,
-            "reacted": bool(current_user_id and int(current_user_id) in user_ids),
-        })
+        normalized.append(
+            {
+                "emoji": emoji,
+                "count": legacy_count + len(user_ids),
+                "user_ids": user_ids,
+                "legacy_count": legacy_count,
+                "reacted": bool(current_user_id and int(current_user_id) in user_ids),
+            }
+        )
     return normalized
 
 
@@ -80,7 +92,13 @@ def toggle_reaction(message, emoji, user_id):
     reactions = normalize_reactions(message.reactions)
     reaction = next((item for item in reactions if item["emoji"] == emoji), None)
     if reaction is None:
-        reaction = {"emoji": emoji, "count": 0, "user_ids": [], "legacy_count": 0, "reacted": False}
+        reaction = {
+            "emoji": emoji,
+            "count": 0,
+            "user_ids": [],
+            "legacy_count": 0,
+            "reacted": False,
+        }
         reactions.append(reaction)
     if int(user_id) in reaction["user_ids"]:
         reaction["user_ids"].remove(int(user_id))
@@ -88,7 +106,11 @@ def toggle_reaction(message, emoji, user_id):
         reaction["user_ids"].append(int(user_id))
     reaction["count"] = reaction["legacy_count"] + len(reaction["user_ids"])
     persisted = [
-        {"emoji": item["emoji"], "user_ids": item["user_ids"], "legacy_count": item["legacy_count"]}
+        {
+            "emoji": item["emoji"],
+            "user_ids": item["user_ids"],
+            "legacy_count": item["legacy_count"],
+        }
         for item in reactions
         if item["legacy_count"] + len(item["user_ids"]) > 0
     ]

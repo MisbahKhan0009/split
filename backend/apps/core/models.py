@@ -1,6 +1,6 @@
-from django.conf import settings
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -13,7 +13,9 @@ class TimeStamped(models.Model):
 
 
 class UserProfile(TimeStamped):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
+    )
     avatar = models.ImageField(upload_to="avatars/%Y/%m/", blank=True, null=True)
     bio = models.CharField(max_length=240, blank=True)
     status = models.CharField(max_length=80, default="Available")
@@ -30,8 +32,14 @@ class Group(TimeStamped):
     currency = models.CharField(max_length=3, default="BDT")
     currency_symbol = models.CharField(max_length=4, default="৳")
     description = models.TextField(blank=True)
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_groups")
-    members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="GroupMembership", related_name="shared_groups")
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_groups"
+    )
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through="GroupMembership",
+        related_name="shared_groups",
+    )
 
     def __str__(self):
         return self.name
@@ -44,15 +52,33 @@ class GroupInvitation(TimeStamped):
         DECLINED = "declined", "Declined"
         REVOKED = "revoked", "Revoked"
 
-    group = models.ForeignKey("Group", on_delete=models.CASCADE, related_name="invitations")
-    inviter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_group_invitations")
-    invitee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_group_invitations")
+    group = models.ForeignKey(
+        "Group", on_delete=models.CASCADE, related_name="invitations"
+    )
+    inviter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_group_invitations",
+    )
+    invitee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_group_invitations",
+    )
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING
+    )
     accepted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["group", "invitee"], condition=models.Q(status="pending"), name="unique_pending_group_invite")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "invitee"],
+                condition=models.Q(status="pending"),
+                name="unique_pending_group_invite",
+            )
+        ]
 
 
 class GroupMembership(TimeStamped):
@@ -67,7 +93,11 @@ class GroupMembership(TimeStamped):
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["group", "user"], name="unique_group_member")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "user"], name="unique_group_member"
+            )
+        ]
 
 
 class Expense(TimeStamped):
@@ -80,26 +110,38 @@ class Expense(TimeStamped):
     title = models.CharField(max_length=180)
     category = models.CharField(max_length=40, default="Other")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    payer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="paid_expenses")
+    payer = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="paid_expenses"
+    )
     note = models.TextField(blank=True)
     occurred_on = models.DateField()
     split_mode = models.CharField(max_length=16, default="equal")
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING
+    )
     receipt = models.FileField(upload_to="receipts/%Y/%m/", blank=True, null=True)
 
 
 class ExpenseParticipant(models.Model):
-    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="participants")
+    expense = models.ForeignKey(
+        Expense, on_delete=models.CASCADE, related_name="participants"
+    )
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     share_amount = models.DecimalField(max_digits=12, decimal_places=2)
     share_value = models.DecimalField(max_digits=8, decimal_places=2, default=0)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["expense", "user"], name="unique_expense_participant")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["expense", "user"], name="unique_expense_participant"
+            )
+        ]
 
 
 class ExpenseComment(TimeStamped):
-    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="comments")
+    expense = models.ForeignKey(
+        Expense, on_delete=models.CASCADE, related_name="comments"
+    )
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     body = models.CharField(max_length=1000)
     attachments = models.JSONField(default=list, blank=True)
@@ -111,15 +153,29 @@ class Settlement(TimeStamped):
         CONFIRMED = "confirmed", "Confirmed"
         DECLINED = "declined", "Declined"
 
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="settlements")
-    from_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="settlements_sent")
-    to_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="settlements_received")
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="settlements"
+    )
+    from_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="settlements_sent",
+    )
+    to_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="settlements_received",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.REQUESTED)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.REQUESTED
+    )
     note = models.CharField(max_length=255, blank=True)
     payment_method = models.CharField(max_length=40, blank=True)
     payment_reference = models.CharField(max_length=120, blank=True)
-    proof = models.FileField(upload_to="settlement-proofs/%Y/%m/", blank=True, null=True)
+    proof = models.FileField(
+        upload_to="settlement-proofs/%Y/%m/", blank=True, null=True
+    )
     paid_at = models.DateTimeField(null=True, blank=True)
 
 
@@ -139,20 +195,32 @@ class RecurringExpense(TimeStamped):
         MONTHLY = "monthly", "Monthly"
         YEARLY = "yearly", "Yearly"
 
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="recurring_expenses")
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="recurring_expenses"
+    )
     title = models.CharField(max_length=180)
     category = models.CharField(max_length=40, default="Other")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     payer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    frequency = models.CharField(max_length=12, choices=Frequency.choices, default=Frequency.MONTHLY)
+    frequency = models.CharField(
+        max_length=12, choices=Frequency.choices, default=Frequency.MONTHLY
+    )
     next_run = models.DateField()
     split_mode = models.CharField(max_length=16, default="equal")
     is_active = models.BooleanField(default=True)
-    last_created_expense = models.ForeignKey(Expense, on_delete=models.SET_NULL, null=True, blank=True, related_name="generated_by_recurring")
+    last_created_expense = models.ForeignKey(
+        Expense,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="generated_by_recurring",
+    )
 
 
 class ActivityEvent(TimeStamped):
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="activity_events")
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="activity_events"
+    )
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     action = models.CharField(max_length=60)
     target = models.CharField(max_length=180)
@@ -160,8 +228,16 @@ class ActivityEvent(TimeStamped):
 
 
 class Notification(TimeStamped):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
+    )
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
     kind = models.CharField(max_length=40, default="info")
     title = models.CharField(max_length=180)
     body = models.CharField(max_length=500, blank=True)
@@ -184,11 +260,15 @@ class PollOption(TimeStamped):
 
 class PollVote(TimeStamped):
     poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="votes")
-    option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name="votes")
+    option = models.ForeignKey(
+        PollOption, on_delete=models.CASCADE, related_name="votes"
+    )
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["poll", "user"], name="unique_poll_vote")]
+        constraints = [
+            models.UniqueConstraint(fields=["poll", "user"], name="unique_poll_vote")
+        ]
 
 
 class GroupEvent(TimeStamped):
@@ -200,7 +280,9 @@ class GroupEvent(TimeStamped):
     location = models.CharField(max_length=180, blank=True)
     budget = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     checklist = models.JSONField(default=list, blank=True)
-    attendees = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="group_events", blank=True)
+    attendees = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name="group_events", blank=True
+    )
 
 
 class ChatMessage(TimeStamped):
@@ -208,15 +290,35 @@ class ChatMessage(TimeStamped):
         GROUP = "group", "Group"
         DIRECT = "direct", "Direct"
 
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="chat_messages", null=True, blank=True)
-    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_chat_messages")
-    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_chat_messages", null=True, blank=True)
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="chat_messages",
+        null=True,
+        blank=True,
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_chat_messages",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_chat_messages",
+        null=True,
+        blank=True,
+    )
     kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.GROUP)
     body = models.TextField(max_length=2000, blank=True)
     attachments = models.JSONField(default=list, blank=True)
     reactions = models.JSONField(default=list, blank=True)
-    reply_to = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="replies")
-    related_expense = models.ForeignKey(Expense, on_delete=models.SET_NULL, null=True, blank=True)
+    reply_to = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="replies"
+    )
+    related_expense = models.ForeignKey(
+        Expense, on_delete=models.SET_NULL, null=True, blank=True
+    )
     read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

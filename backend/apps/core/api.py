@@ -1,7 +1,7 @@
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-import uuid
 
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
@@ -14,11 +14,33 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .chat import broadcast_message_event, is_active_member, normalize_reactions, share_active_group, toggle_reaction, visible_messages
+from .chat import (
+    broadcast_message_event,
+    is_active_member,
+    normalize_reactions,
+    share_active_group,
+    toggle_reaction,
+    visible_messages,
+)
 from .models import (
-    ActivityEvent, Budget, ChatMessage, Expense, ExpenseComment, ExpenseParticipant,
-    Group, GroupEvent, GroupMembership, GroupComment, GroupInvitation, Notification, Poll, PollOption,
-    PollVote, RecurringExpense, Settlement, UserProfile,
+    ActivityEvent,
+    Budget,
+    ChatMessage,
+    Expense,
+    ExpenseComment,
+    ExpenseParticipant,
+    Group,
+    GroupComment,
+    GroupEvent,
+    GroupInvitation,
+    GroupMembership,
+    Notification,
+    Poll,
+    PollOption,
+    PollVote,
+    RecurringExpense,
+    Settlement,
+    UserProfile,
 )
 
 User = get_user_model()
@@ -29,14 +51,24 @@ def user_display(user):
 
 
 def member_of(user, group):
-    return GroupMembership.objects.filter(user=user, group=group, is_active=True).exists()
+    return GroupMembership.objects.filter(
+        user=user, group=group, is_active=True
+    ).exists()
 
 
 def log_activity(group, actor, action, target, metadata=None):
-    event = ActivityEvent.objects.create(group=group, actor=actor, action=action, target=target, metadata=metadata or {})
+    event = ActivityEvent.objects.create(
+        group=group, actor=actor, action=action, target=target, metadata=metadata or {}
+    )
     for member_id in group.members.values_list("id", flat=True):
         if member_id != actor.id:
-            Notification.objects.create(user_id=member_id, group=group, kind="activity", title=f"{user_display(actor)} {action}", body=target)
+            Notification.objects.create(
+                user_id=member_id,
+                group=group,
+                kind="activity",
+                title=f"{user_display(actor)} {action}",
+                body=target,
+            )
     return event
 
 
@@ -46,7 +78,14 @@ class UserDirectorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "first_name", "last_name", "display_name", "initials"]
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "display_name",
+            "initials",
+        ]
 
     def get_display_name(self, obj):
         return user_display(obj)
@@ -80,7 +119,21 @@ class GroupInvitationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GroupInvitation
-        fields = ["id", "group", "group_name", "inviter", "inviter_name", "invitee", "invitee_name", "invitee_username", "token", "invite_url", "status", "accepted_at", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "group_name",
+            "inviter",
+            "inviter_name",
+            "invitee",
+            "invitee_name",
+            "invitee_username",
+            "token",
+            "invite_url",
+            "status",
+            "accepted_at",
+            "created_at",
+        ]
         read_only_fields = ["inviter", "token", "status", "accepted_at", "created_at"]
 
     def get_inviter_name(self, obj):
@@ -125,20 +178,37 @@ class GroupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ["id", "name", "slug", "emoji", "currency", "currency_symbol", "description", "member_count", "members_detail", "created_at"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "emoji",
+            "currency",
+            "currency_symbol",
+            "description",
+            "member_count",
+            "members_detail",
+            "created_at",
+        ]
         read_only_fields = ["owner", "currency", "currency_symbol"]
 
     def get_member_count(self, obj):
         return obj.groupmembership_set.filter(is_active=True).count()
 
     def get_members_detail(self, obj):
-        memberships = obj.groupmembership_set.filter(is_active=True).select_related("user", "user__profile")
+        memberships = obj.groupmembership_set.filter(is_active=True).select_related(
+            "user", "user__profile"
+        )
         return MemberSerializer(memberships, many=True, context=self.context).data
 
     def create(self, validated_data):
         user = self.context["request"].user
-        group = Group.objects.create(owner=user, currency="BDT", currency_symbol="৳", **validated_data)
-        GroupMembership.objects.create(group=group, user=user, role=GroupMembership.Role.OWNER)
+        group = Group.objects.create(
+            owner=user, currency="BDT", currency_symbol="৳", **validated_data
+        )
+        GroupMembership.objects.create(
+            group=group, user=user, role=GroupMembership.Role.OWNER
+        )
         log_activity(group, user, "created group", group.name)
         return group
 
@@ -159,7 +229,15 @@ class ExpenseCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExpenseComment
-        fields = ["id", "expense", "author", "author_name", "body", "attachments", "created_at"]
+        fields = [
+            "id",
+            "expense",
+            "author",
+            "author_name",
+            "body",
+            "attachments",
+            "created_at",
+        ]
         read_only_fields = ["author", "author_name"]
 
     def get_author_name(self, obj):
@@ -174,7 +252,24 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Expense
-        fields = ["id", "group", "title", "category", "amount", "currency", "payer", "payer_name", "note", "occurred_on", "split_mode", "status", "receipt", "participants", "comments", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "title",
+            "category",
+            "amount",
+            "currency",
+            "payer",
+            "payer_name",
+            "note",
+            "occurred_on",
+            "split_mode",
+            "status",
+            "receipt",
+            "participants",
+            "comments",
+            "created_at",
+        ]
         read_only_fields = ["status", "currency", "payer_name", "comments"]
 
     def get_payer_name(self, obj):
@@ -185,13 +280,22 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if attrs["amount"] <= 0:
-            raise serializers.ValidationError({"amount": "Expense amount must be greater than zero."})
-        if attrs.get("split_mode", "equal") not in {"equal", "exact", "percentage", "shares"}:
+            raise serializers.ValidationError(
+                {"amount": "Expense amount must be greater than zero."}
+            )
+        if attrs.get("split_mode", "equal") not in {
+            "equal",
+            "exact",
+            "percentage",
+            "shares",
+        }:
             raise serializers.ValidationError({"split_mode": "Unsupported split mode."})
         group = attrs.get("group")
         request = self.context.get("request")
         if group and request and not member_of(request.user, group):
-            raise serializers.ValidationError({"group": "You must be an active group member."})
+            raise serializers.ValidationError(
+                {"group": "You must be an active group member."}
+            )
         return attrs
 
     @transaction.atomic
@@ -201,9 +305,22 @@ class ExpenseSerializer(serializers.ModelSerializer):
         if participant_data:
             total = sum(Decimal(item["share_amount"]) for item in participant_data)
             if expense.split_mode in {"exact", "equal"} and total != expense.amount:
-                raise serializers.ValidationError({"participants": f"Participant shares must equal {expense.amount}."})
-            ExpenseParticipant.objects.bulk_create([ExpenseParticipant(expense=expense, **item) for item in participant_data])
-        log_activity(expense.group, expense.payer, "added expense", expense.title, {"expense_id": expense.id, "amount": str(expense.amount)})
+                raise serializers.ValidationError(
+                    {"participants": f"Participant shares must equal {expense.amount}."}
+                )
+            ExpenseParticipant.objects.bulk_create(
+                [
+                    ExpenseParticipant(expense=expense, **item)
+                    for item in participant_data
+                ]
+            )
+        log_activity(
+            expense.group,
+            expense.payer,
+            "added expense",
+            expense.title,
+            {"expense_id": expense.id, "amount": str(expense.amount)},
+        )
         return expense
 
 
@@ -214,7 +331,23 @@ class SettlementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Settlement
-        fields = ["id", "group", "from_user", "from_name", "to_user", "to_name", "amount", "currency", "status", "note", "payment_method", "payment_reference", "proof", "paid_at", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "from_user",
+            "from_name",
+            "to_user",
+            "to_name",
+            "amount",
+            "currency",
+            "status",
+            "note",
+            "payment_method",
+            "payment_reference",
+            "proof",
+            "paid_at",
+            "created_at",
+        ]
         read_only_fields = ["status", "currency", "from_name", "to_name", "paid_at"]
 
     def get_currency(self, obj):
@@ -230,9 +363,13 @@ class SettlementSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         group = attrs.get("group")
         if group and request and not member_of(request.user, group):
-            raise serializers.ValidationError({"group": "You must be an active group member."})
+            raise serializers.ValidationError(
+                {"group": "You must be an active group member."}
+            )
         if attrs.get("amount", 0) <= 0:
-            raise serializers.ValidationError({"amount": "Settlement amount must be greater than zero."})
+            raise serializers.ValidationError(
+                {"amount": "Settlement amount must be greater than zero."}
+            )
         return attrs
 
 
@@ -243,11 +380,26 @@ class BudgetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Budget
-        fields = ["id", "group", "name", "category", "amount", "spent", "percent", "currency", "period", "starts_on", "is_active", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "name",
+            "category",
+            "amount",
+            "spent",
+            "percent",
+            "currency",
+            "period",
+            "starts_on",
+            "is_active",
+            "created_at",
+        ]
         read_only_fields = ["spent", "percent", "currency"]
 
     def get_spent(self, obj):
-        query = obj.group.expenses.filter(status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED])
+        query = obj.group.expenses.filter(
+            status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]
+        )
         if obj.category != "All":
             query = query.filter(category=obj.category)
         return query.aggregate(total=Sum("amount"))["total"] or Decimal("0")
@@ -266,7 +418,21 @@ class RecurringExpenseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RecurringExpense
-        fields = ["id", "group", "title", "category", "amount", "payer", "payer_name", "frequency", "next_run", "split_mode", "is_active", "last_created_expense", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "title",
+            "category",
+            "amount",
+            "payer",
+            "payer_name",
+            "frequency",
+            "next_run",
+            "split_mode",
+            "is_active",
+            "last_created_expense",
+            "created_at",
+        ]
         read_only_fields = ["payer_name", "last_created_expense"]
 
     def get_payer_name(self, obj):
@@ -279,7 +445,17 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ActivityEvent
-        fields = ["id", "group", "actor", "actor_name", "actor_initials", "action", "target", "metadata", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "actor",
+            "actor_name",
+            "actor_initials",
+            "action",
+            "target",
+            "metadata",
+            "created_at",
+        ]
 
     def get_actor_name(self, obj):
         return user_display(obj.actor)
@@ -291,7 +467,16 @@ class ActivitySerializer(serializers.ModelSerializer):
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
-        fields = ["id", "group", "kind", "title", "body", "target_url", "is_read", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "kind",
+            "title",
+            "body",
+            "target_url",
+            "is_read",
+            "created_at",
+        ]
 
 
 class PollOptionSerializer(serializers.ModelSerializer):
@@ -312,7 +497,18 @@ class PollSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Poll
-        fields = ["id", "group", "creator", "creator_name", "question", "options", "total_votes", "closes_at", "is_closed", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "creator",
+            "creator_name",
+            "question",
+            "options",
+            "total_votes",
+            "closes_at",
+            "is_closed",
+            "created_at",
+        ]
         read_only_fields = ["creator", "creator_name", "options", "total_votes"]
 
     def get_creator_name(self, obj):
@@ -328,7 +524,21 @@ class GroupEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GroupEvent
-        fields = ["id", "group", "creator", "creator_name", "title", "description", "starts_at", "location", "budget", "checklist", "attendees", "attendee_count", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "creator",
+            "creator_name",
+            "title",
+            "description",
+            "starts_at",
+            "location",
+            "budget",
+            "checklist",
+            "attendees",
+            "attendee_count",
+            "created_at",
+        ]
         read_only_fields = ["creator", "creator_name", "attendee_count"]
 
     def get_creator_name(self, obj):
@@ -343,7 +553,15 @@ class GroupCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GroupComment
-        fields = ["id", "group", "author", "author_name", "body", "attachments", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "author",
+            "author_name",
+            "body",
+            "attachments",
+            "created_at",
+        ]
         read_only_fields = ["author", "author_name"]
 
     def get_author_name(self, obj):
@@ -359,7 +577,24 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChatMessage
-        fields = ["id", "group", "author", "author_name", "author_initials", "recipient", "recipient_name", "kind", "body", "attachments", "reactions", "reply_to", "reply_preview", "related_expense", "read_at", "created_at"]
+        fields = [
+            "id",
+            "group",
+            "author",
+            "author_name",
+            "author_initials",
+            "recipient",
+            "recipient_name",
+            "kind",
+            "body",
+            "attachments",
+            "reactions",
+            "reply_to",
+            "reply_preview",
+            "related_expense",
+            "read_at",
+            "created_at",
+        ]
         read_only_fields = ["author", "author_name", "author_initials", "created_at"]
 
     def get_author_name(self, obj):
@@ -398,27 +633,55 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
         if kind == ChatMessage.Kind.GROUP:
             if not group or recipient:
-                raise serializers.ValidationError("Group messages require a group and cannot have a recipient.")
+                raise serializers.ValidationError(
+                    "Group messages require a group and cannot have a recipient."
+                )
             if not user or not is_active_member(user.id, group.id):
-                raise serializers.ValidationError({"group": "You must be an active group member."})
+                raise serializers.ValidationError(
+                    {"group": "You must be an active group member."}
+                )
         elif kind == ChatMessage.Kind.DIRECT:
             if not recipient or group:
-                raise serializers.ValidationError("Direct messages require a recipient and cannot have a group.")
-            if not user or recipient.id == user.id or not share_active_group(user.id, recipient.id):
-                raise serializers.ValidationError({"recipient": "You can only message an active shared-group member."})
+                raise serializers.ValidationError(
+                    "Direct messages require a recipient and cannot have a group."
+                )
+            if (
+                not user
+                or recipient.id == user.id
+                or not share_active_group(user.id, recipient.id)
+            ):
+                raise serializers.ValidationError(
+                    {"recipient": "You can only message an active shared-group member."}
+                )
         else:
             raise serializers.ValidationError({"kind": "Unsupported message kind."})
 
         if not body and not attachments:
-            raise serializers.ValidationError("A message needs text or at least one attachment.")
+            raise serializers.ValidationError(
+                "A message needs text or at least one attachment."
+            )
         if not isinstance(attachments, list):
-            raise serializers.ValidationError({"attachments": "Attachments must be a list."})
+            raise serializers.ValidationError(
+                {"attachments": "Attachments must be a list."}
+            )
         if reply_to:
-            same_group = kind == ChatMessage.Kind.GROUP and reply_to.kind == kind and reply_to.group_id == group.id
-            direct_users = {user.id, recipient.id} if kind == ChatMessage.Kind.DIRECT else set()
-            reply_users = {reply_to.author_id, reply_to.recipient_id} if reply_to.kind == ChatMessage.Kind.DIRECT else set()
+            same_group = (
+                kind == ChatMessage.Kind.GROUP
+                and reply_to.kind == kind
+                and reply_to.group_id == group.id
+            )
+            direct_users = (
+                {user.id, recipient.id} if kind == ChatMessage.Kind.DIRECT else set()
+            )
+            reply_users = (
+                {reply_to.author_id, reply_to.recipient_id}
+                if reply_to.kind == ChatMessage.Kind.DIRECT
+                else set()
+            )
             if not same_group and direct_users != reply_users:
-                raise serializers.ValidationError({"reply_to": "Replies must reference the same conversation."})
+                raise serializers.ValidationError(
+                    {"reply_to": "Replies must reference the same conversation."}
+                )
         attrs["body"] = body
         return attrs
 
@@ -428,10 +691,19 @@ class UserDirectoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = User.objects.filter(is_active=True).exclude(id=self.request.user.id).order_by("username")
+        queryset = (
+            User.objects.filter(is_active=True)
+            .exclude(id=self.request.user.id)
+            .order_by("username")
+        )
         search = self.request.query_params.get("search", "").strip()
         if search:
-            queryset = queryset.filter(Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search))
+            queryset = queryset.filter(
+                Q(username__icontains=search)
+                | Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
         return queryset[:20]
 
 
@@ -442,65 +714,137 @@ class GroupInvitationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return GroupInvitation.objects.filter(Q(invitee=user) | Q(inviter=user)).select_related("group", "inviter", "invitee").order_by("-created_at")
+        return (
+            GroupInvitation.objects.filter(Q(invitee=user) | Q(inviter=user))
+            .select_related("group", "inviter", "invitee")
+            .order_by("-created_at")
+        )
 
     def create(self, request, *args, **kwargs):
         group_id = request.data.get("group")
         username = str(request.data.get("username", "")).strip()
         if not group_id or not username:
-            raise serializers.ValidationError({"group": "Group and username are required."})
+            raise serializers.ValidationError(
+                {"group": "Group and username are required."}
+            )
         group = Group.objects.filter(pk=group_id, members=request.user).first()
         if not group:
-            raise serializers.ValidationError({"group": "You must be an active member of this group."})
+            raise serializers.ValidationError(
+                {"group": "You must be an active member of this group."}
+            )
         invitee = User.objects.filter(username__iexact=username, is_active=True).first()
         if not invitee:
-            raise serializers.ValidationError({"username": "No active user was found with that username."})
-        if invitee.id == request.user.id or group.members.filter(pk=invitee.id).exists():
-            raise serializers.ValidationError({"username": "That user is already a member of this group."})
-        invitation, created = GroupInvitation.objects.get_or_create(group=group, invitee=invitee, status=GroupInvitation.Status.PENDING, defaults={"inviter": request.user})
+            raise serializers.ValidationError(
+                {"username": "No active user was found with that username."}
+            )
+        if (
+            invitee.id == request.user.id
+            or group.members.filter(pk=invitee.id).exists()
+        ):
+            raise serializers.ValidationError(
+                {"username": "That user is already a member of this group."}
+            )
+        invitation, created = GroupInvitation.objects.get_or_create(
+            group=group,
+            invitee=invitee,
+            status=GroupInvitation.Status.PENDING,
+            defaults={"inviter": request.user},
+        )
         if not created:
             invitation.inviter = request.user
             invitation.save(update_fields=["inviter", "updated_at"])
-        Notification.objects.create(user=invitee, group=group, kind="invitation", title=f"{user_display(request.user)} invited you", body=f"Join {group.name}", target_url=f"/invitations/{invitation.token}/")
-        return Response(self.get_serializer(invitation).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        Notification.objects.create(
+            user=invitee,
+            group=group,
+            kind="invitation",
+            title=f"{user_display(request.user)} invited you",
+            body=f"Join {group.name}",
+            target_url=f"/invitations/{invitation.token}/",
+        )
+        return Response(
+            self.get_serializer(invitation).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
         invitation = self.get_object()
         if invitation.invitee_id != request.user.id:
-            return Response({"detail": "Only the invited user can accept this invitation."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Only the invited user can accept this invitation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if invitation.status != GroupInvitation.Status.PENDING:
             return Response(self.get_serializer(invitation).data)
-        GroupMembership.objects.get_or_create(group=invitation.group, user=request.user, defaults={"role": GroupMembership.Role.MEMBER, "is_active": True})
+        GroupMembership.objects.get_or_create(
+            group=invitation.group,
+            user=request.user,
+            defaults={"role": GroupMembership.Role.MEMBER, "is_active": True},
+        )
         invitation.status = GroupInvitation.Status.ACCEPTED
         invitation.accepted_at = timezone.now()
         invitation.save(update_fields=["status", "accepted_at", "updated_at"])
-        log_activity(invitation.group, request.user, "joined group", invitation.group.name)
-        Notification.objects.create(user=invitation.inviter, group=invitation.group, kind="invitation", title=f"{user_display(request.user)} joined", body=f"{user_display(request.user)} accepted your invitation.")
+        log_activity(
+            invitation.group, request.user, "joined group", invitation.group.name
+        )
+        Notification.objects.create(
+            user=invitation.inviter,
+            group=invitation.group,
+            kind="invitation",
+            title=f"{user_display(request.user)} joined",
+            body=f"{user_display(request.user)} accepted your invitation.",
+        )
         return Response(self.get_serializer(invitation).data)
 
     @action(detail=False, methods=["post"], url_path="accept_by_token")
     def accept_by_token(self, request):
         token = request.query_params.get("token") or request.data.get("token")
-        invitation = GroupInvitation.objects.filter(token=token).select_related("group", "inviter", "invitee").first()
+        invitation = (
+            GroupInvitation.objects.filter(token=token)
+            .select_related("group", "inviter", "invitee")
+            .first()
+        )
         if not invitation:
-            return Response({"detail": "Invitation link is invalid or expired."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Invitation link is invalid or expired."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         if invitation.invitee_id != request.user.id:
-            return Response({"detail": "Sign in as the invited username before accepting this invitation."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {
+                    "detail": "Sign in as the invited username before accepting this invitation."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if invitation.status == GroupInvitation.Status.PENDING:
-            GroupMembership.objects.get_or_create(group=invitation.group, user=request.user, defaults={"role": GroupMembership.Role.MEMBER, "is_active": True})
+            GroupMembership.objects.get_or_create(
+                group=invitation.group,
+                user=request.user,
+                defaults={"role": GroupMembership.Role.MEMBER, "is_active": True},
+            )
             invitation.status = GroupInvitation.Status.ACCEPTED
             invitation.accepted_at = timezone.now()
             invitation.save(update_fields=["status", "accepted_at", "updated_at"])
-            log_activity(invitation.group, request.user, "joined group", invitation.group.name)
-            Notification.objects.create(user=invitation.inviter, group=invitation.group, kind="invitation", title=f"{user_display(request.user)} joined", body=f"{user_display(request.user)} accepted your invitation.")
+            log_activity(
+                invitation.group, request.user, "joined group", invitation.group.name
+            )
+            Notification.objects.create(
+                user=invitation.inviter,
+                group=invitation.group,
+                kind="invitation",
+                title=f"{user_display(request.user)} joined",
+                body=f"{user_display(request.user)} accepted your invitation.",
+            )
         return Response(self.get_serializer(invitation).data)
 
     @action(detail=True, methods=["post"])
     def decline(self, request, pk=None):
         invitation = self.get_object()
         if invitation.invitee_id != request.user.id:
-            return Response({"detail": "Only the invited user can decline this invitation."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Only the invited user can decline this invitation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         invitation.status = GroupInvitation.Status.DECLINED
         invitation.save(update_fields=["status", "updated_at"])
         return Response(self.get_serializer(invitation).data)
@@ -511,7 +855,11 @@ class GroupViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Group.objects.filter(members=self.request.user).distinct().prefetch_related("members")
+        return (
+            Group.objects.filter(members=self.request.user)
+            .distinct()
+            .prefetch_related("members")
+        )
 
     def perform_create(self, serializer):
         serializer.save()
@@ -519,31 +867,77 @@ class GroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def summary(self, request, pk=None):
         group = self.get_object()
-        expenses = group.expenses.filter(status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED])
+        expenses = group.expenses.filter(
+            status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]
+        )
         total = expenses.aggregate(total=Sum("amount"))["total"] or Decimal("0")
-        category_totals = list(expenses.values("category").annotate(total=Sum("amount")).order_by("-total")[:8])
-        return Response({"group": group.name, "currency": {"code": "BDT", "symbol": "৳"}, "total_spend": total, "expense_count": expenses.count(), "member_count": group.members.count(), "category_totals": category_totals})
+        category_totals = list(
+            expenses.values("category")
+            .annotate(total=Sum("amount"))
+            .order_by("-total")[:8]
+        )
+        return Response(
+            {
+                "group": group.name,
+                "currency": {"code": "BDT", "symbol": "৳"},
+                "total_spend": total,
+                "expense_count": expenses.count(),
+                "member_count": group.members.count(),
+                "category_totals": category_totals,
+            }
+        )
 
     @action(detail=True, methods=["get"])
     def settlement_plan(self, request, pk=None):
         group = self.get_object()
         balances = {user.id: Decimal("0") for user in group.members.all()}
-        for expense in group.expenses.filter(status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]).prefetch_related("participants"):
+        for expense in group.expenses.filter(
+            status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]
+        ).prefetch_related("participants"):
             balances[expense.payer_id] += expense.amount
             for participant in expense.participants.all():
                 balances[participant.user_id] -= participant.share_amount
-        creditors = [[uid, amount] for uid, amount in balances.items() if amount > Decimal("0.01")]
-        debtors = [[uid, -amount] for uid, amount in balances.items() if amount < Decimal("-0.01")]
+        creditors = [
+            [uid, amount]
+            for uid, amount in balances.items()
+            if amount > Decimal("0.01")
+        ]
+        debtors = [
+            [uid, -amount]
+            for uid, amount in balances.items()
+            if amount < Decimal("-0.01")
+        ]
         transfers = []
         i = j = 0
         while i < len(debtors) and j < len(creditors):
             amount = min(debtors[i][1], creditors[j][1])
-            transfers.append({"from_user": debtors[i][0], "to_user": creditors[j][0], "amount": amount})
-            debtors[i][1] -= amount; creditors[j][1] -= amount
-            if debtors[i][1] <= Decimal("0.01"): i += 1
-            if creditors[j][1] <= Decimal("0.01"): j += 1
+            transfers.append(
+                {
+                    "from_user": debtors[i][0],
+                    "to_user": creditors[j][0],
+                    "amount": amount,
+                }
+            )
+            debtors[i][1] -= amount
+            creditors[j][1] -= amount
+            if debtors[i][1] <= Decimal("0.01"):
+                i += 1
+            if creditors[j][1] <= Decimal("0.01"):
+                j += 1
         names = {u.id: user_display(u) for u in group.members.all()}
-        return Response({"currency": {"code": "BDT", "symbol": "৳"}, "transfers": [{**item, "from_name": names[item["from_user"]], "to_name": names[item["to_user"]]} for item in transfers]})
+        return Response(
+            {
+                "currency": {"code": "BDT", "symbol": "৳"},
+                "transfers": [
+                    {
+                        **item,
+                        "from_name": names[item["from_user"]],
+                        "to_name": names[item["to_user"]],
+                    }
+                    for item in transfers
+                ],
+            }
+        )
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
@@ -551,18 +945,36 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Expense.objects.filter(group__members=self.request.user).select_related("payer").prefetch_related("participants", "comments")
+        queryset = (
+            Expense.objects.filter(group__members=self.request.user)
+            .select_related("payer")
+            .prefetch_related("participants", "comments")
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
     @action(detail=True, methods=["post"])
     def comment(self, request, pk=None):
         expense = self.get_object()
-        serializer = ExpenseCommentSerializer(data={"expense": expense.id, "body": request.data.get("body", ""), "attachments": request.data.get("attachments", [])})
+        serializer = ExpenseCommentSerializer(
+            data={
+                "expense": expense.id,
+                "body": request.data.get("body", ""),
+                "attachments": request.data.get("attachments", []),
+            }
+        )
         serializer.is_valid(raise_exception=True)
         comment = serializer.save(author=request.user)
-        log_activity(expense.group, request.user, "commented on", expense.title, {"expense_id": expense.id})
-        return Response(ExpenseCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
+        log_activity(
+            expense.group,
+            request.user,
+            "commented on",
+            expense.title,
+            {"expense_id": expense.id},
+        )
+        return Response(
+            ExpenseCommentSerializer(comment).data, status=status.HTTP_201_CREATED
+        )
 
 
 class SettlementViewSet(viewsets.ModelViewSet):
@@ -570,13 +982,20 @@ class SettlementViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Settlement.objects.filter(group__members=self.request.user).select_related("from_user", "to_user")
+        queryset = Settlement.objects.filter(
+            group__members=self.request.user
+        ).select_related("from_user", "to_user")
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
         settlement = serializer.save()
-        log_activity(settlement.group, self.request.user, "requested settlement", f"৳ {settlement.amount}")
+        log_activity(
+            settlement.group,
+            self.request.user,
+            "requested settlement",
+            f"৳ {settlement.amount}",
+        )
 
     @action(detail=True, methods=["post"])
     def confirm(self, request, pk=None):
@@ -584,8 +1003,19 @@ class SettlementViewSet(viewsets.ModelViewSet):
         settlement.status = Settlement.Status.CONFIRMED
         settlement.paid_at = timezone.now()
         settlement.save(update_fields=["status", "paid_at", "updated_at"])
-        Notification.objects.create(user=settlement.to_user, group=settlement.group, kind="settlement", title="Settlement confirmed", body=f"৳ {settlement.amount} was marked as paid.")
-        log_activity(settlement.group, request.user, "confirmed settlement", f"৳ {settlement.amount}")
+        Notification.objects.create(
+            user=settlement.to_user,
+            group=settlement.group,
+            kind="settlement",
+            title="Settlement confirmed",
+            body=f"৳ {settlement.amount} was marked as paid.",
+        )
+        log_activity(
+            settlement.group,
+            request.user,
+            "confirmed settlement",
+            f"৳ {settlement.amount}",
+        )
         return Response(self.get_serializer(settlement).data)
 
     @action(detail=False, methods=["get"])
@@ -617,16 +1047,44 @@ class RecurringExpenseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         recurring = serializer.save()
-        log_activity(recurring.group, self.request.user, "scheduled recurring expense", recurring.title)
+        log_activity(
+            recurring.group,
+            self.request.user,
+            "scheduled recurring expense",
+            recurring.title,
+        )
 
     @action(detail=True, methods=["post"])
     def generate_now(self, request, pk=None):
         recurring = self.get_object()
-        expense = Expense.objects.create(group=recurring.group, title=recurring.title, category=recurring.category, amount=recurring.amount, payer=recurring.payer, occurred_on=date.today(), split_mode=recurring.split_mode, status=Expense.Status.PENDING)
+        expense = Expense.objects.create(
+            group=recurring.group,
+            title=recurring.title,
+            category=recurring.category,
+            amount=recurring.amount,
+            payer=recurring.payer,
+            occurred_on=date.today(),
+            split_mode=recurring.split_mode,
+            status=Expense.Status.PENDING,
+        )
         recurring.last_created_expense = expense
-        recurring.next_run = date.today() + (timedelta(days=7) if recurring.frequency == "weekly" else timedelta(days=365) if recurring.frequency == "yearly" else timedelta(days=30))
+        recurring.next_run = date.today() + (
+            timedelta(days=7)
+            if recurring.frequency == "weekly"
+            else (
+                timedelta(days=365)
+                if recurring.frequency == "yearly"
+                else timedelta(days=30)
+            )
+        )
         recurring.save(update_fields=["last_created_expense", "next_run", "updated_at"])
-        log_activity(recurring.group, request.user, "generated recurring expense", expense.title, {"expense_id": expense.id})
+        log_activity(
+            recurring.group,
+            request.user,
+            "generated recurring expense",
+            expense.title,
+            {"expense_id": expense.id},
+        )
         return Response(ExpenseSerializer(expense).data, status=status.HTTP_201_CREATED)
 
 
@@ -635,7 +1093,9 @@ class ActivityViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = ActivityEvent.objects.filter(group__members=self.request.user).select_related("actor")
+        queryset = ActivityEvent.objects.filter(
+            group__members=self.request.user
+        ).select_related("actor")
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -645,7 +1105,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).select_related("group")
+        return Notification.objects.filter(user=self.request.user).select_related(
+            "group"
+        )
 
     @action(detail=False, methods=["post"])
     def mark_all_read(self, request):
@@ -658,7 +1120,9 @@ class PollViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Poll.objects.filter(group__members=self.request.user).prefetch_related("options", "votes")
+        return Poll.objects.filter(group__members=self.request.user).prefetch_related(
+            "options", "votes"
+        )
 
     def perform_create(self, serializer):
         poll = serializer.save(creator=self.request.user)
@@ -670,7 +1134,9 @@ class PollViewSet(viewsets.ModelViewSet):
     def vote(self, request, pk=None):
         poll = self.get_object()
         option = poll.options.get(pk=request.data.get("option"))
-        PollVote.objects.update_or_create(poll=poll, user=request.user, defaults={"option": option})
+        PollVote.objects.update_or_create(
+            poll=poll, user=request.user, defaults={"option": option}
+        )
         return Response(self.get_serializer(poll).data)
 
 
@@ -679,7 +1145,9 @@ class GroupEventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return GroupEvent.objects.filter(group__members=self.request.user).prefetch_related("attendees")
+        return GroupEvent.objects.filter(
+            group__members=self.request.user
+        ).prefetch_related("attendees")
 
     def perform_create(self, serializer):
         event = serializer.save(creator=self.request.user)
@@ -701,11 +1169,15 @@ class GroupCommentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return GroupComment.objects.filter(group__members=self.request.user).select_related("author")
+        return GroupComment.objects.filter(
+            group__members=self.request.user
+        ).select_related("author")
 
     def perform_create(self, serializer):
         comment = serializer.save(author=self.request.user)
-        log_activity(comment.group, self.request.user, "posted group note", comment.body[:80])
+        log_activity(
+            comment.group, self.request.user, "posted group note", comment.body[:80]
+        )
 
 
 class ProfileViewSet(viewsets.ModelViewSet):
@@ -713,7 +1185,9 @@ class ProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return UserProfile.objects.filter(user__shared_groups__members=self.request.user).distinct()
+        return UserProfile.objects.filter(
+            user__shared_groups__members=self.request.user
+        ).distinct()
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
@@ -740,12 +1214,16 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
                 Q(author=self.request.user, recipient_id=recipient_id)
                 | Q(author_id=recipient_id, recipient=self.request.user)
             )
-        return queryset.select_related("author", "recipient", "reply_to", "reply_to__author")
+        return queryset.select_related(
+            "author", "recipient", "reply_to", "reply_to__author"
+        )
 
     def perform_create(self, serializer):
         message = serializer.save(author=self.request.user)
         payload = self.get_serializer(message).data
-        transaction.on_commit(lambda: broadcast_message_event(message, "message", {"message": payload}))
+        transaction.on_commit(
+            lambda: broadcast_message_event(message, "message", {"message": payload})
+        )
 
     @action(detail=True, methods=["post"])
     def react(self, request, pk=None):
@@ -753,7 +1231,11 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             message = self.get_queryset().select_for_update().get(pk=pk)
             toggle_reaction(message, request.data.get("emoji", "👍"), request.user.id)
             payload = self.get_serializer(message).data
-            transaction.on_commit(lambda: broadcast_message_event(message, "reaction", {"message": payload}))
+            transaction.on_commit(
+                lambda: broadcast_message_event(
+                    message, "reaction", {"message": payload}
+                )
+            )
         return Response(payload)
 
     @action(detail=True, methods=["post"])
@@ -763,43 +1245,85 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             message.read_at = timezone.now()
             message.save(update_fields=["read_at", "updated_at"])
         payload = self.get_serializer(message).data
-        transaction.on_commit(lambda: broadcast_message_event(message, "read", {"message": payload, "user_id": request.user.id}))
+        transaction.on_commit(
+            lambda: broadcast_message_event(
+                message, "read", {"message": payload, "user_id": request.user.id}
+            )
+        )
         return Response(payload)
 
-    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    @action(
+        detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser]
+    )
     def upload(self, request):
         upload = request.FILES.get("file")
         group_id = request.data.get("group")
         recipient_id = request.data.get("recipient")
         if bool(group_id) == bool(recipient_id):
-            raise serializers.ValidationError("Provide exactly one group or recipient target.")
+            raise serializers.ValidationError(
+                "Provide exactly one group or recipient target."
+            )
         if group_id and not is_active_member(request.user.id, group_id):
-            raise serializers.ValidationError({"group": "You must be an active group member."})
+            raise serializers.ValidationError(
+                {"group": "You must be an active group member."}
+            )
         if recipient_id:
             try:
                 recipient_id = int(recipient_id)
             except (TypeError, ValueError):
                 raise serializers.ValidationError({"recipient": "Invalid recipient."})
-            if recipient_id == request.user.id or not share_active_group(request.user.id, recipient_id):
-                raise serializers.ValidationError({"recipient": "You can only upload to an active shared-group conversation."})
+            if recipient_id == request.user.id or not share_active_group(
+                request.user.id, recipient_id
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "recipient": "You can only upload to an active shared-group conversation."
+                    }
+                )
         if not upload:
             raise serializers.ValidationError({"file": "Choose a file to upload."})
         if upload.size > 10 * 1024 * 1024:
-            raise serializers.ValidationError({"file": "Files must be 10 MB or smaller."})
+            raise serializers.ValidationError(
+                {"file": "Files must be 10 MB or smaller."}
+            )
 
-        allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".mov", ".pdf", ".doc", ".docx", ".zip"}
+        allowed_extensions = {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".webp",
+            ".mp4",
+            ".webm",
+            ".mov",
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".zip",
+        }
         allowed_mimes = {
-            "image/jpeg", "image/png", "image/gif", "image/webp",
-            "video/mp4", "video/webm", "video/quicktime", "application/pdf",
-            "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/zip", "application/x-zip-compressed", "application/octet-stream",
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/zip",
+            "application/x-zip-compressed",
+            "application/octet-stream",
         }
         extension = Path(upload.name).suffix.lower()
         content_type = (upload.content_type or "application/octet-stream").lower()
         if extension not in allowed_extensions or content_type not in allowed_mimes:
             raise serializers.ValidationError({"file": "Unsupported file type."})
 
-        stored_name = default_storage.save(f"chat/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{extension}", upload)
+        stored_name = default_storage.save(
+            f"chat/{timezone.now():%Y/%m}/{uuid.uuid4().hex}{extension}", upload
+        )
         url = request.build_absolute_uri(default_storage.url(stored_name))
         if content_type.startswith("image/"):
             kind = "gif" if extension == ".gif" else "image"
@@ -807,11 +1331,14 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             kind = "video"
         else:
             kind = "file"
-        return Response({
-            "id": uuid.uuid4().hex,
-            "kind": kind,
-            "name": Path(upload.name).name,
-            "url": url,
-            "size": upload.size,
-            "content_type": content_type,
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "id": uuid.uuid4().hex,
+                "kind": kind,
+                "name": Path(upload.name).name,
+                "url": url,
+                "size": upload.size,
+                "content_type": content_type,
+            },
+            status=status.HTTP_201_CREATED,
+        )

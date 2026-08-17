@@ -1,4 +1,3 @@
-
 ## Expense flow check
 
 Opening `Add expense` displayed a focused modal with title, amount, category, split-mode controls, participant selection, receipt toggle, cancel, and save actions. Filling `Canal tour tickets` and `3200` updated the live preview to `৳ 800` per person for four participants, confirming the equal-split interaction is wired correctly.

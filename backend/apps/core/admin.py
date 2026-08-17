@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import ChatMessage, Expense, ExpenseParticipant, Group, GroupMembership, Settlement, UserProfile
+
+from .models import (
+    ChatMessage,
+    Expense,
+    ExpenseParticipant,
+    Group,
+    GroupMembership,
+    Settlement,
+    UserProfile,
+)
 
 
 @admin.register(UserProfile)
@@ -40,6 +49,14 @@ class SettlementAdmin(admin.ModelAdmin):
 
 @admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ("kind", "group", "author", "recipient", "body", "created_at", "read_at")
+    list_display = (
+        "kind",
+        "group",
+        "author",
+        "recipient",
+        "body",
+        "created_at",
+        "read_at",
+    )
     list_filter = ("kind", "created_at")
     search_fields = ("body", "author__username", "recipient__username")

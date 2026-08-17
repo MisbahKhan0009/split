@@ -16,12 +16,30 @@ from rest_framework.test import APIClient
 User = get_user_model()
 User.objects.filter(username="auth_smoke").delete()
 client = APIClient()
-register = client.post("/api/v1/auth/register/", {"username": "auth_smoke", "password": "safe-password-123", "password_confirm": "safe-password-123", "first_name": "Rafi", "last_name": "Ahmed", "email": "rafi@example.com"}, format="json")
+register = client.post(
+    "/api/v1/auth/register/",
+    {
+        "username": "auth_smoke",
+        "password": "safe-password-123",
+        "password_confirm": "safe-password-123",
+        "first_name": "Rafi",
+        "last_name": "Ahmed",
+        "email": "rafi@example.com",
+    },
+    format="json",
+)
 print("register_status", register.status_code)
 print("register_body", register.data)
-login = client.post("/api/v1/auth/token/", {"username": "auth_smoke", "password": "safe-password-123"}, format="json")
+login = client.post(
+    "/api/v1/auth/token/",
+    {"username": "auth_smoke", "password": "safe-password-123"},
+    format="json",
+)
 print("login_status", login.status_code)
-print("has_access_token", bool(login.data.get("access")) if hasattr(login, "data") else False)
+print(
+    "has_access_token",
+    bool(login.data.get("access")) if hasattr(login, "data") else False,
+)
 if login.status_code == 200:
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
     me = client.get("/api/v1/auth/me/")

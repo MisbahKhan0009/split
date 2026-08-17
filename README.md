@@ -16,11 +16,11 @@ The Messages workspace now behaves like a modern Messenger/WhatsApp-style inbox.
 
 ## Architecture
 
-| Layer | Responsibility |
-| --- | --- |
-| Frontend | React + TypeScript + Vite, liquid-glass responsive UI, BDT formatting, inbox conversations, media previews, reactions, profiles, and WebSocket clients. |
-| Backend | Django, Django REST Framework, Channels, JWT/session authentication, group membership checks, profile APIs, chat history, direct messages, rich attachments, reactions, read receipts, and typing/realtime event handlers. |
-| Data | SQLite by default for development, PostgreSQL through `DATABASE_URL` in deployment, Django media storage for receipts and avatars, and JSON fields for attachment/reaction metadata. |
+| Layer    | Responsibility                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend | React + TypeScript + Vite, liquid-glass responsive UI, BDT formatting, inbox conversations, media previews, reactions, profiles, and WebSocket clients.                                                                    |
+| Backend  | Django, Django REST Framework, Channels, JWT/session authentication, group membership checks, profile APIs, chat history, direct messages, rich attachments, reactions, read receipts, and typing/realtime event handlers. |
+| Data     | SQLite by default for development, PostgreSQL through `DATABASE_URL` in deployment, Django media storage for receipts and avatars, and JSON fields for attachment/reaction metadata.                                       |
 
 ## Repository structure
 
@@ -70,23 +70,23 @@ Set `DATABASE_URL` to a PostgreSQL connection string in production. Without it, 
 
 ## API and realtime contracts
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| POST | `/api/v1/auth/register/` | Create an account, profile, and JWT session. |
-| POST | `/api/v1/auth/token/` | Issue JWT access and refresh tokens. |
-| POST | `/api/v1/auth/token/refresh/` | Refresh an access token. |
-| GET | `/api/v1/auth/me/` | Read the authenticated user profile. |
-| GET/POST | `/api/v1/groups/` | List or create BDT groups. New groups default to `BDT` and `৳`. |
-| GET | `/api/v1/groups/{id}/summary/` | Read spend summary with currency metadata. |
-| GET/POST/PATCH/DELETE | `/api/v1/expenses/` | Manage shared expenses and participant splits. |
-| GET/POST/PATCH/DELETE | `/api/v1/settlements/` | Manage settlement requests and BDT balances. |
-| GET/PATCH | `/api/v1/profiles/me/` | Read or update the current profile, avatar, bio, status, and theme. |
-| GET | `/api/v1/messages/?group={id}` | Read group chat history. |
-| GET | `/api/v1/messages/?recipient={user_id}` | Read a private-message thread. |
-| POST | `/api/v1/messages/{id}/react/` | Add a reaction. |
-| POST | `/api/v1/messages/{id}/mark_read/` | Mark a message as read. |
-| WebSocket | `/ws/groups/{group_id}/chat/` | Group delivery, typing, reactions, and read events. |
-| WebSocket | `/ws/users/{user_id}/chat/` | Direct-message delivery between two users. |
+| Method                | Endpoint                                | Purpose                                                             |
+| --------------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| POST                  | `/api/v1/auth/register/`                | Create an account, profile, and JWT session.                        |
+| POST                  | `/api/v1/auth/token/`                   | Issue JWT access and refresh tokens.                                |
+| POST                  | `/api/v1/auth/token/refresh/`           | Refresh an access token.                                            |
+| GET                   | `/api/v1/auth/me/`                      | Read the authenticated user profile.                                |
+| GET/POST              | `/api/v1/groups/`                       | List or create BDT groups. New groups default to `BDT` and `৳`.     |
+| GET                   | `/api/v1/groups/{id}/summary/`          | Read spend summary with currency metadata.                          |
+| GET/POST/PATCH/DELETE | `/api/v1/expenses/`                     | Manage shared expenses and participant splits.                      |
+| GET/POST/PATCH/DELETE | `/api/v1/settlements/`                  | Manage settlement requests and BDT balances.                        |
+| GET/PATCH             | `/api/v1/profiles/me/`                  | Read or update the current profile, avatar, bio, status, and theme. |
+| GET                   | `/api/v1/messages/?group={id}`          | Read group chat history.                                            |
+| GET                   | `/api/v1/messages/?recipient={user_id}` | Read a private-message thread.                                      |
+| POST                  | `/api/v1/messages/{id}/react/`          | Add a reaction.                                                     |
+| POST                  | `/api/v1/messages/{id}/mark_read/`      | Mark a message as read.                                             |
+| WebSocket             | `/ws/groups/{group_id}/chat/`           | Group delivery, typing, reactions, and read events.                 |
+| WebSocket             | `/ws/users/{user_id}/chat/`             | Direct-message delivery between two users.                          |
 
 Chat WebSocket messages accept `body`, `attachments`, and optional `reply_to`. Production deployment should replace the in-memory channel layer with Redis and connect object storage for durable media uploads.
 

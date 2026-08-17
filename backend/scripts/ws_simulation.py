@@ -11,14 +11,14 @@ import django
 
 django.setup()
 
+from apps.core.consumers import DirectMessageConsumer, GroupChatConsumer
+from apps.core.models import ChatMessage, Group, GroupMembership
 from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from channels.routing import URLRouter
 from channels.testing.websocket import WebsocketCommunicator
-from django.urls import re_path
 from django.contrib.auth import get_user_model
-from apps.core.consumers import DirectMessageConsumer, GroupChatConsumer
-from apps.core.models import ChatMessage, Group, GroupMembership
+from django.urls import re_path
 
 User = get_user_model()
 
@@ -40,15 +40,35 @@ def seed_database():
     User.objects.filter(username__in=["rafi_ws", "tisha_ws"]).delete()
     rafi = User.objects.create_user(username="rafi_ws", password="safe-password")
     tisha = User.objects.create_user(username="tisha_ws", password="safe-password")
-    group = Group.objects.create(name="Realtime test group", slug="ws-simulation-group", owner=rafi, currency="BDT", currency_symbol="৳")
-    GroupMembership.objects.create(group=group, user=rafi, role=GroupMembership.Role.OWNER)
-    GroupMembership.objects.create(group=group, user=tisha, role=GroupMembership.Role.MEMBER)
+    group = Group.objects.create(
+        name="Realtime test group",
+        slug="ws-simulation-group",
+        owner=rafi,
+        currency="BDT",
+        currency_symbol="৳",
+    )
+    GroupMembership.objects.create(
+        group=group, user=rafi, role=GroupMembership.Role.OWNER
+    )
+    GroupMembership.objects.create(
+        group=group, user=tisha, role=GroupMembership.Role.MEMBER
+    )
     return rafi, tisha, group
 
 
 @sync_to_async
 def persisted_messages():
-    return list(ChatMessage.objects.values("kind", "body", "attachments", "reactions", "group_id", "recipient_id", "read_at"))
+    return list(
+        ChatMessage.objects.values(
+            "kind",
+            "body",
+            "attachments",
+            "reactions",
+            "group_id",
+            "recipient_id",
+            "read_at",
+        )
+    )
 
 
 async def receive_event(communicator, label):
@@ -69,15 +89,32 @@ async def main():
     channel_layer = get_channel_layer()
     await channel_layer.flush()
 
-    group_app = URLRouter([re_path(r"ws/groups/(?P<group_id>[^/]+)/chat/$", GroupChatConsumer.as_asgi())])
-    rafi_group = WebsocketCommunicator(as_user_application(group_app, rafi), f"/ws/groups/{group.id}/chat/")
-    tisha_group = WebsocketCommunicator(as_user_application(group_app, tisha), f"/ws/groups/{group.id}/chat/")
+    group_app = URLRouter(
+        [re_path(r"ws/groups/(?P<group_id>[^/]+)/chat/$", GroupChatConsumer.as_asgi())]
+    )
+    rafi_group = WebsocketCommunicator(
+        as_user_application(group_app, rafi), f"/ws/groups/{group.id}/chat/"
+    )
+    tisha_group = WebsocketCommunicator(
+        as_user_application(group_app, tisha), f"/ws/groups/{group.id}/chat/"
+    )
     assert (await rafi_group.connect())[0] is True
     assert (await tisha_group.connect())[0] is True
     await receive_event(rafi_group, "rafi group handshake")
     await receive_event(tisha_group, "tisha group handshake")
 
-    await rafi_group.send_json_to({"body": "Adding the river cruise receipt", "attachments": [{"kind": "image", "name": "river-cruise.jpg", "url": "memory://river-cruise.jpg"}]})
+    await rafi_group.send_json_to(
+        {
+            "body": "Adding the river cruise receipt",
+            "attachments": [
+                {
+                    "kind": "image",
+                    "name": "river-cruise.jpg",
+                    "url": "memory://river-cruise.jpg",
+                }
+            ],
+        }
+    )
     rafi_message = await receive_event(rafi_group, "rafi group message")
     tisha_message = await receive_event(tisha_group, "tisha group message")
     assert rafi_message["event"] == "message" and tisha_message["event"] == "message"
@@ -88,10 +125,19 @@ async def main():
     assert typing["event"] == "typing" and typing["is_typing"] is True
 
     message_id = rafi_message["id"]
-    await tisha_group.send_json_to({"event": "reaction", "message_id": message_id, "emoji": "🔥"})
-    reaction_from_rafi = await receive_until(rafi_group, "rafi reaction event", "reaction")
-    reaction_from_tisha = await receive_until(tisha_group, "tisha reaction event", "reaction")
-    assert reaction_from_rafi["event"] == "reaction" and reaction_from_tisha["emoji"] == "🔥"
+    await tisha_group.send_json_to(
+        {"event": "reaction", "message_id": message_id, "emoji": "🔥"}
+    )
+    reaction_from_rafi = await receive_until(
+        rafi_group, "rafi reaction event", "reaction"
+    )
+    reaction_from_tisha = await receive_until(
+        tisha_group, "tisha reaction event", "reaction"
+    )
+    assert (
+        reaction_from_rafi["event"] == "reaction"
+        and reaction_from_tisha["emoji"] == "🔥"
+    )
 
     await tisha_group.send_json_to({"event": "read", "message_id": message_id})
     read_event = await receive_until(rafi_group, "rafi read event", "read")
@@ -100,18 +146,34 @@ async def main():
     await rafi_group.disconnect()
     await tisha_group.disconnect()
 
-    direct_app = URLRouter([re_path(r"ws/users/(?P<user_id>[^/]+)/chat/$", DirectMessageConsumer.as_asgi())])
-    rafi_direct = WebsocketCommunicator(as_user_application(direct_app, rafi), f"/ws/users/{tisha.id}/chat/")
-    tisha_direct = WebsocketCommunicator(as_user_application(direct_app, tisha), f"/ws/users/{rafi.id}/chat/")
+    direct_app = URLRouter(
+        [
+            re_path(
+                r"ws/users/(?P<user_id>[^/]+)/chat/$", DirectMessageConsumer.as_asgi()
+            )
+        ]
+    )
+    rafi_direct = WebsocketCommunicator(
+        as_user_application(direct_app, rafi), f"/ws/users/{tisha.id}/chat/"
+    )
+    tisha_direct = WebsocketCommunicator(
+        as_user_application(direct_app, tisha), f"/ws/users/{rafi.id}/chat/"
+    )
     assert (await rafi_direct.connect())[0] is True
     assert (await tisha_direct.connect())[0] is True
     await receive_event(rafi_direct, "rafi direct handshake")
     await receive_event(tisha_direct, "tisha direct handshake")
 
-    await rafi_direct.send_json_to({"body": "Private follow-up: I will request the ৳ 620 split."})
+    await rafi_direct.send_json_to(
+        {"body": "Private follow-up: I will request the ৳ 620 split."}
+    )
     direct_from_rafi = await receive_event(rafi_direct, "rafi direct message")
     direct_from_tisha = await receive_event(tisha_direct, "tisha direct message")
-    assert direct_from_rafi["event"] == "message" and direct_from_tisha["message"] == "Private follow-up: I will request the ৳ 620 split."
+    assert (
+        direct_from_rafi["event"] == "message"
+        and direct_from_tisha["message"]
+        == "Private follow-up: I will request the ৳ 620 split."
+    )
 
     await rafi_direct.disconnect()
     await tisha_direct.disconnect()
