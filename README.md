@@ -10,6 +10,8 @@ The frontend includes a marketing landing page, group workspace, overview dashbo
 
 The default currency is **Bangladeshi taka (`৳`, code `BDT`)** across the landing page, demo data, expenses, balances, settlement views, planning copy, and backend serializers. Demo identities use only casual Bangladeshi Gen Z names: **Rafi, Tisha, Nabil, Mahi, and Shuvo**.
 
+The website now includes **signup and signin**. Visitors can create an account or authenticate with a username and password through the Django JWT API. Successful sessions store access and refresh tokens in browser storage, display the signed-in user in the workspace account footer, and expose sign out. A no-account demo preview remains available from the authentication surface so the product can still be reviewed instantly.
+
 The Messages workspace now behaves like a modern Messenger/WhatsApp-style inbox. It includes a group thread, private-message threads, member profile drawers, profile-picture update controls, emoji selection, GIF sending, image/video/file attachment controls, attachment previews, message reactions, reply context, typing indicators, delivery state, read-state hooks, theme switching, shared-media metadata, and WebSocket-ready group/direct delivery.
 
 ## Architecture
@@ -66,6 +68,10 @@ Set `DATABASE_URL` to a PostgreSQL connection string in production. Without it, 
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
+| POST | `/api/v1/auth/register/` | Create an account, profile, and JWT session. |
+| POST | `/api/v1/auth/token/` | Issue JWT access and refresh tokens. |
+| POST | `/api/v1/auth/token/refresh/` | Refresh an access token. |
+| GET | `/api/v1/auth/me/` | Read the authenticated user profile. |
 | GET/POST | `/api/v1/groups/` | List or create BDT groups. New groups default to `BDT` and `৳`. |
 | GET | `/api/v1/groups/{id}/summary/` | Read spend summary with currency metadata. |
 | GET/POST/PATCH/DELETE | `/api/v1/expenses/` | Manage shared expenses and participant splits. |
@@ -86,6 +92,7 @@ Chat WebSocket messages accept `body`, `attachments`, and optional `reply_to`. P
 cd frontend && pnpm run build
 cd ../backend && python3 manage.py check
 cd ../backend && python3 manage.py test
+cd ../backend && DJANGO_ALLOWED_HOSTS='localhost,127.0.0.1,testserver' python3 scripts/auth_smoke.py
 git diff --check
 ```
 
