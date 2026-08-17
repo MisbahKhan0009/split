@@ -68,6 +68,7 @@ import {
   type ChatConnection,
   type GroupMemberDTO,
   type MessageDTO,
+  type ProfileDTO,
 } from "./lib/api";
 
 const money = (value: number) => `৳ ${value.toLocaleString("en-BD")}`;
@@ -267,6 +268,8 @@ function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState<Member | null>(null);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [profile, setProfile] = useState<ProfileDTO | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [chatTheme, setChatTheme] = useState("default");
   const [query, setQuery] = useState("");
@@ -396,6 +399,9 @@ function App() {
     setAvailableGroups([]);
     setActiveGroup(emptyGroup);
     setUserDashboard(null);
+    setProfile(null);
+    setProfileImage(undefined);
+    setShowAccountMenu(false);
     setActiveView("dashboard");
     setShowAuth(false);
     setShowLanding(false);
@@ -404,9 +410,29 @@ function App() {
   const handleSignOut = () => {
     clearSession();
     setAuthUser(null);
+    setProfile(null);
+    setProfileImage(undefined);
+    setShowAccountMenu(false);
     setShowLanding(true);
     setShowAuth(false);
     notify("You have been signed out.");
+  };
+  const updateProfile = async (payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>) => {
+    const nextProfile = await api.updateProfile(payload);
+    setProfile(nextProfile);
+    setProfileImage(nextProfile.avatar ?? undefined);
+    if (nextProfile.theme === "light" || nextProfile.theme === "dark")
+      setTheme(nextProfile.theme);
+    setChatTheme(nextProfile.theme || "default");
+    notify("Settings saved to your account.");
+  };
+  const uploadProfilePicture = async (file: File) => {
+    const body = new FormData();
+    body.append("avatar", file);
+    const nextProfile = await api.updateProfile(body);
+    setProfile(nextProfile);
+    setProfileImage(nextProfile.avatar ?? undefined);
+    notify("Profile picture updated.");
   };
   const navigate = (view: View) => {
     setActiveView(view);
@@ -575,7 +601,12 @@ function App() {
     Promise.all([
       refreshGroups(),
       refreshInvitations(),
-      api.profile().then((profile) => setChatTheme(profile.theme || "default")),
+      api.profile().then((nextProfile) => {
+        setProfile(nextProfile);
+        setProfileImage(nextProfile.avatar ?? undefined);
+        setChatTheme(nextProfile.theme || "default");
+        setTheme(nextProfile.theme === "light" ? "light" : "dark");
+      }),
       refreshDashboard(),
     ]).catch((requestError) =>
       notify(
@@ -1008,7 +1039,18 @@ function App() {
         }}
         onOpenPalette={() => setShowPalette(true)}
         profileImage={profileImage ?? currentMember.profile.avatarUrl}
-        onOpenProfile={() => setShowProfile(currentMember)}
+        profile={profile}
+        accountMenuOpen={showAccountMenu}
+        onToggleAccountMenu={() => setShowAccountMenu((value) => !value)}
+        onOpenSettings={() => {
+          setShowAccountMenu(false);
+          navigate("settings");
+        }}
+        onToggleTheme={() => {
+          const nextTheme = theme === "dark" ? "light" : "dark";
+          setTheme(nextTheme);
+          void updateProfile({ theme: nextTheme });
+        }}
         onSignOut={handleSignOut}
         authUser={authUser}
       />
@@ -1024,7 +1066,11 @@ function App() {
             setShowNotifications((value) => !value);
             void refreshInvitations();
           }}
-          onTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onTheme={() => {
+            const nextTheme = theme === "dark" ? "light" : "dark";
+            setTheme(nextTheme);
+            void updateProfile({ theme: nextTheme });
+          }}
           theme={theme}
         />
         {showNotifications && (
@@ -1039,6 +1085,21 @@ function App() {
           />
         )}
         <div className="page-content">
+          {activeView === "settings" && authUser && (
+            <SettingsPage
+              authUser={authUser}
+              profile={profile}
+              profileImage={profileImage}
+              theme={theme}
+              onProfileSaved={updateProfile}
+              onAvatarUpload={uploadProfilePicture}
+              onThemeChange={(nextTheme) => {
+                setTheme(nextTheme);
+                void updateProfile({ theme: nextTheme });
+              }}
+              onSignOut={handleSignOut}
+            />
+          )}
           {activeView === "dashboard" && (
             <UserDashboardView
               dashboard={userDashboard}
@@ -1108,11 +1169,15 @@ function App() {
               typingNames={Object.values(typingUsers)}
               onReact={addReaction}
               onMarkRead={markCurrentThreadRead}
-              onOpenProfile={(id) =>
+              onOpenProfile={(id) => {
+                if (id === String(authUser?.id) || id === "me") {
+                  navigate("settings");
+                  return;
+                }
                 setShowProfile(
                   activeMembers.find((member) => member.id === id) ?? null,
-                )
-              }
+                );
+              }}
               onOpenDirect={openDirect}
               chatTheme={chatTheme}
               onThemeChange={changeChatTheme}
@@ -1231,7 +1296,9 @@ function App() {
           }}
         />
       )}
-      {showProfile && (
+      {showProfile &&
+        showProfile.id !== String(authUser?.id) &&
+        showProfile.id !== "me" && (
         <ProfileDrawer
           member={showProfile}
           isSelf={
@@ -2523,6 +2590,269 @@ function Landing({
     </div>
   );
 }
+function AccountMenu({
+  profile,
+  onOpenSettings,
+  onToggleTheme,
+  onSignOut,
+}: {
+  profile: ProfileDTO | null;
+  onOpenSettings: () => void;
+  onToggleTheme: () => void;
+  onSignOut: () => void;
+}) {
+  const isLight = profile?.theme === "light";
+  return (
+    <div className="account-menu" role="menu">
+      <div className="account-menu-heading">
+        <span className="muted-label">ACCOUNT</span>
+        <small>{profile?.status || "Available"}</small>
+      </div>
+      <button type="button" onClick={onToggleTheme}>
+        <Sun size={15} />
+        <span>{isLight ? "Use dark theme" : "Use light theme"}</span>
+        <span className="menu-value">{isLight ? "Light" : "Dark"}</span>
+      </button>
+      <button type="button" onClick={onOpenSettings}>
+        <Settings2 size={15} />
+        <span>Settings</span>
+        <ChevronDown size={14} className="menu-chevron" />
+      </button>
+      <div className="account-menu-divider" />
+      <button type="button" className="account-menu-danger" onClick={onSignOut}>
+        <LogIn size={15} />
+        <span>Sign out</span>
+      </button>
+    </div>
+  );
+}
+
+function SettingsPage({
+  authUser,
+  profile,
+  profileImage,
+  theme,
+  onProfileSaved,
+  onAvatarUpload,
+  onThemeChange,
+  onSignOut,
+}: {
+  authUser: AuthUser;
+  profile: ProfileDTO | null;
+  profileImage?: string;
+  theme: "dark" | "light";
+  onProfileSaved: (
+    payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>,
+  ) => Promise<void>;
+  onAvatarUpload: (file: File) => Promise<void>;
+  onThemeChange: (theme: "dark" | "light") => void;
+  onSignOut: () => void;
+}) {
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [status, setStatus] = useState(profile?.status ?? "Available");
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const initials =
+    profile?.initials ||
+    authUser.display_name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+
+  useEffect(() => {
+    setBio(profile?.bio ?? "");
+    setStatus(profile?.status ?? "Available");
+  }, [profile?.bio, profile?.status]);
+
+  const saveProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await onProfileSaved({ bio: bio.trim(), status: status.trim() || "Available" });
+    } catch (requestError) {
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not save your profile settings.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      window.alert("Choose an image file for your profile picture.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert("Profile pictures must be 5 MB or smaller.");
+      return;
+    }
+    setUploading(true);
+    try {
+      await onAvatarUpload(file);
+    } catch (requestError) {
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not upload your profile picture.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <section className="page-section settings-page">
+      <div className="page-header settings-header">
+        <div>
+          <div className="eyebrow">
+            <span className="eyebrow-dot" /> ACCOUNT SETTINGS
+          </div>
+          <h1>Make this workspace yours.</h1>
+          <p>Update your profile, appearance, and account preferences.</p>
+        </div>
+        <span className="settings-security-note">
+          <Check size={14} /> Changes save to your account
+        </span>
+      </div>
+      <div className="settings-grid">
+        <form className="glass-card settings-card" onSubmit={saveProfile}>
+          <div className="section-heading">
+            <div>
+              <span className="muted-label">PROFILE</span>
+              <h2>Your presence</h2>
+            </div>
+          </div>
+          <div className="settings-profile-hero">
+            <button
+              type="button"
+              className="settings-avatar-button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              title="Upload profile picture"
+            >
+              <Avatar
+                member={{ initials, color: "#b7f36b" }}
+                size="lg"
+                avatarUrl={profileImage}
+              />
+              <span className="settings-avatar-badge">
+                <Image size={13} />
+              </span>
+            </button>
+            <div>
+              <strong>{authUser.display_name}</strong>
+              <small>@{authUser.username}</small>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? "Uploading…" : "Change profile picture"}
+              </button>
+            </div>
+          </div>
+          <input
+            ref={fileRef}
+            hidden
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={handleUpload}
+          />
+          <label className="field-label">
+            Status
+            <input
+              value={status}
+              maxLength={80}
+              onChange={(event) => setStatus(event.target.value)}
+              placeholder="Available"
+            />
+          </label>
+          <label className="field-label">
+            About you
+            <textarea
+              value={bio}
+              maxLength={240}
+              onChange={(event) => setBio(event.target.value)}
+              placeholder="Tell your group a little about you"
+              rows={4}
+            />
+          </label>
+          <div className="settings-form-footer">
+            <small>{bio.length}/240 characters</small>
+            <button className="primary-button" type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save profile"}
+            </button>
+          </div>
+        </form>
+        <div className="settings-column">
+          <div className="glass-card settings-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">APPEARANCE</span>
+                <h2>Theme</h2>
+              </div>
+              <Palette size={18} />
+            </div>
+            <p className="settings-description">
+              Choose the workspace appearance used across your signed-in sessions.
+            </p>
+            <div className="theme-options">
+              {(["dark", "light"] as const).map((option) => (
+                <button
+                  type="button"
+                  key={option}
+                  className={`theme-option ${theme === option ? "selected" : ""}`}
+                  onClick={() => onThemeChange(option)}
+                >
+                  <span className={`theme-preview ${option}`} />
+                  <span>
+                    <strong>{option === "dark" ? "Dark glass" : "Light glass"}</strong>
+                    <small>{theme === option ? "Active" : "Use this theme"}</small>
+                  </span>
+                  {theme === option && <Check size={15} />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">ACCOUNT</span>
+                <h2>Account details</h2>
+              </div>
+              <UserRound size={18} />
+            </div>
+            <div className="settings-detail-row"><span>Name</span><strong>{authUser.display_name}</strong></div>
+            <div className="settings-detail-row"><span>Username</span><strong>@{authUser.username}</strong></div>
+            <div className="settings-detail-row"><span>Email</span><strong>{authUser.email || "Not added"}</strong></div>
+            <p className="settings-description">Your account identity is managed through the secure sign-in flow.</p>
+          </div>
+          <div className="glass-card settings-card danger-card">
+            <div>
+              <span className="muted-label">SESSION</span>
+              <h2>Sign out everywhere</h2>
+              <p className="settings-description">End this browser session and return to the public landing page.</p>
+            </div>
+            <button type="button" className="outline-button danger-button" onClick={onSignOut}>
+              <LogIn size={15} /> Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Sidebar({
   activeView,
   onNavigate,
@@ -2536,7 +2866,11 @@ function Sidebar({
   onOpenInvite,
   onOpenPalette,
   profileImage,
-  onOpenProfile,
+  profile,
+  accountMenuOpen,
+  onToggleAccountMenu,
+  onOpenSettings,
+  onToggleTheme,
   onSignOut,
   authUser,
 }: {
@@ -2552,7 +2886,11 @@ function Sidebar({
   onOpenInvite: () => void;
   onOpenPalette: () => void;
   profileImage?: string;
-  onOpenProfile: () => void;
+  profile: ProfileDTO | null;
+  accountMenuOpen: boolean;
+  onToggleAccountMenu: () => void;
+  onOpenSettings: () => void;
+  onToggleTheme: () => void;
   onSignOut: () => void;
   authUser: AuthUser | null;
 }) {
@@ -2684,14 +3022,11 @@ function Sidebar({
           <span>Quick actions</span>
           <kbd>⌘ K</kbd>
         </button>
-        <button type="button" className="side-settings">
-          <Settings2 size={16} />
-          <span>Settings</span>
-        </button>
         <button
           type="button"
           className="profile profile-button"
-          onClick={onOpenProfile}
+          onClick={onToggleAccountMenu}
+          aria-expanded={accountMenuOpen}
         >
           <Avatar
             member={{ initials: accountInitials, color: "#b7f36b" }}
@@ -2703,10 +3038,14 @@ function Sidebar({
           </span>
           <MoreHorizontal size={16} />
         </button>
-        <button type="button" className="side-signout" onClick={onSignOut}>
-          <LogIn size={15} />
-          <span>Sign out</span>
-        </button>
+        {accountMenuOpen && (
+          <AccountMenu
+            profile={profile}
+            onOpenSettings={onOpenSettings}
+            onToggleTheme={onToggleTheme}
+            onSignOut={onSignOut}
+          />
+        )}
       </div>
     </aside>
   );
