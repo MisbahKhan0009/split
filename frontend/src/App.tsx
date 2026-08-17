@@ -295,6 +295,7 @@ function App() {
   const [userDashboard, setUserDashboard] = useState<
     import("./lib/api").UserDashboard | null
   >(null);
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>(null);
   const [connectedPolls, setConnectedPolls] = useState<
     import("./lib/api").Poll[]
   >([]);
@@ -451,8 +452,11 @@ function App() {
     }
   };
   const refreshDashboard = async () => {
+    if (!getAccessToken()) return;
     try {
-      setUserDashboard(await api.dashboard());
+      const snapshot = await api.dashboard();
+      setUserDashboard(snapshot);
+      setDashboardUpdatedAt(new Date());
     } catch (requestError) {
       notify(
         requestError instanceof Error
@@ -485,6 +489,7 @@ function App() {
     setActiveGroup(group);
     setShowGroupCreate(false);
     setActiveView("overview");
+    await refreshDashboard();
     notify(`Created ${group.name}.`);
   };
   const hasGroups = availableGroups.length > 0;
@@ -580,6 +585,19 @@ function App() {
       ),
     );
   }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshDashboard();
+    };
+    const interval = window.setInterval(refreshWhenVisible, 10000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [authUser?.id]);
 
   useEffect(() => {
     if (activeView !== "chat" || !isBackendGroup) return;
@@ -758,6 +776,7 @@ function App() {
           })),
         });
         await loadConnectedGroup(activeGroup.id);
+        await refreshDashboard();
       } catch (requestError) {
         notify(
           requestError instanceof Error
@@ -1023,6 +1042,7 @@ function App() {
           {activeView === "dashboard" && (
             <UserDashboardView
               dashboard={userDashboard}
+              dashboardUpdatedAt={dashboardUpdatedAt}
               onCreateGroup={() => setShowGroupCreate(true)}
               onNavigate={navigate}
             />
@@ -1062,7 +1082,10 @@ function App() {
               polls={connectedPolls}
               recurring={connectedRecurring}
               currentUserId={authUser?.id ?? 0}
-              onSync={() => loadConnectedGroup(activeGroup.id)}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
               onToast={notify}
             />
           )}
@@ -1106,7 +1129,10 @@ function App() {
               recurring={connectedRecurring}
               events={connectedEvents}
               polls={connectedPolls}
-              onSync={() => loadConnectedGroup(activeGroup.id)}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
               onToast={notify}
             />
           )}
@@ -1168,6 +1194,7 @@ function App() {
             await api.acceptInvitation(id);
             await refreshGroups();
             await refreshInvitations();
+            await refreshDashboard();
             notify("Invitation accepted and membership updated.");
           }}
           onDecline={async (id) => {
@@ -1184,6 +1211,7 @@ function App() {
             await api.acceptInvitation(id);
             await refreshGroups();
             await refreshInvitations();
+            await refreshDashboard();
             notify("Invitation accepted and membership updated.");
           }}
           onDecline={async (id) => {
@@ -1243,10 +1271,12 @@ function App() {
 
 function UserDashboardView({
   dashboard,
+  dashboardUpdatedAt,
   onCreateGroup,
   onNavigate,
 }: {
   dashboard: import("./lib/api").UserDashboard | null;
+  dashboardUpdatedAt: Date | null;
   onCreateGroup: () => void;
   onNavigate: (view: View) => void;
 }) {
@@ -1291,6 +1321,14 @@ function UserDashboardView({
           <p>
             Your personal view of shared money, balances, and group activity.
           </p>
+          <small className="dashboard-sync-status">
+            <span className="live-dot" /> Backend synced {dashboardUpdatedAt
+              ? dashboardUpdatedAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "just now"} · refreshes every 10s
+          </small>
         </div>
         <button
           className="outline-button"

@@ -4768,6 +4768,22 @@ h2 em {
   }
 }
 
+.dashboard-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 10px rgba(183, 243, 107, 0.7);
+}
 .dashboard-chart-grid {
   display: grid;
   grid-template-columns: 1.25fr 1fr;
