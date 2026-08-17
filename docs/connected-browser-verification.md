@@ -41,3 +41,9 @@ Next, the browser will sign out of Tisha’s account, sign in as `rafi_accept_20
 - Reopened the expense modal and submitted `Flatmates electricity bill` for `৳ 2,400` with both real group members selected.
 - The visible expense ledger showed the saved expense as a real backend row, the connected panel updated to `৳ 2,400 · 1 expenses · 2 members`, and the settlement panel showed `Tisha Rahman → Rafi Ahmed ৳ 1,200`.
 - The UI displayed `Expense saved and balances recalculated in ৳`, confirming the complete frontend-to-Django-to-frontend flow.
+
+## Current-user Dashboard and fresh-account verification — 2026-08-17
+
+A fresh account, `mahi_dashboard_2026`, was created through the visible React signup form. The account was not assigned to any group. After correcting the dashboard aggregation’s settlement status value and restarting Django, the live browser showed the sidebar label **Dashboard**, the signed-in user `Mahi Khan`, and the empty state: **No groups yet.** The UI explicitly explained that new users are not automatically added to groups and offered **Create your first group**.
+
+The initial browser attempt exposed a backend 500 caused by using a nonexistent `Settlement.Status.PENDING`; this was corrected to the model’s real `Settlement.Status.REQUESTED` value, and the browser recheck passed.
