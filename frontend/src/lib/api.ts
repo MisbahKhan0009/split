@@ -25,6 +25,7 @@ export type Poll = { id: number; group: number; creator: number; creator_name: s
 export type GroupEvent = { id: number; group: number; creator: number; creator_name: string; title: string; description: string; starts_at: string; location: string; budget: string; checklist: string[]; attendees: number[]; attendee_count: number; created_at: string };
 export type DirectoryUser = { id: number; username: string; first_name: string; last_name: string; display_name: string; initials: string };
 export type GroupInvitation = { id: number; group: number; group_name: string; inviter: number; inviter_name: string; invitee: number; invitee_name: string; invitee_username: string; token: string; invite_url: string; status: "pending" | "accepted" | "declined" | "revoked"; accepted_at: string | null; created_at: string };
+export type UserDashboard = { user: AuthUser; currency: { code: "BDT"; symbol: "৳" }; group_count: number; expense_count: number; total_spend: string; paid_total: string; owed_total: string; pending_to_pay: string; pending_to_receive: string; unread_notifications: number; pending_invitations: number; groups: { id: number; name: string; emoji: string; member_count: number; total_spend: string }[] };
 
 export function getAccessToken() { return window.localStorage.getItem(ACCESS_TOKEN_KEY); }
 export function clearSession() { window.localStorage.removeItem(ACCESS_TOKEN_KEY); window.localStorage.removeItem(REFRESH_TOKEN_KEY); }
@@ -55,6 +56,7 @@ export const api = {
   signup: (payload: { username: string; password: string; password_confirm: string; first_name: string; last_name: string; email?: string }) => request<AuthResponse>("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
   signin: (payload: { username: string; password: string }) => request<AuthResponse>("/auth/token/", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<AuthUser>("/auth/me/"),
+  dashboard: () => request<UserDashboard>("/auth/me/dashboard/"),
   groups: () => request<GroupDTO[]>("/groups/"),
   createGroup: (payload: { name: string; slug: string; emoji?: string; description?: string }) => request<GroupDTO>("/groups/", { method: "POST", body: JSON.stringify(payload) }),
   directoryUsers: (search = "") => request<DirectoryUser[]>(`/directory/users/${search ? `?search=${encodeURIComponent(search)}` : ""}`),

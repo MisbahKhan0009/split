@@ -1,5 +1,9 @@
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Sum
+
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -7,7 +11,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import UserProfile
+from .models import Expense, Group, GroupMembership, GroupInvitation, Notification, Settlement, UserProfile
+
 
 User = get_user_model()
 
@@ -79,3 +84,32 @@ class CurrentUserView(APIView):
 
     def get(self, request):
         return Response(user_payload(request.user))
+
+
+class CurrentUserDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        memberships = GroupMembership.objects.filter(user=user, is_active=True).select_related("group")
+        group_ids = list(memberships.values_list("group_id", flat=True))
+        expenses = Expense.objects.filter(group_id__in=group_ids, status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED])
+        paid = expenses.filter(payer=user).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        owed = expenses.filter(participants__user=user).aggregate(total=Sum("participants__share_amount"))["total"] or Decimal("0")
+        settlements_sent = Settlement.objects.filter(group_id__in=group_ids, from_user=user, status=Settlement.Status.REQUESTED).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        settlements_received = Settlement.objects.filter(group_id__in=group_ids, to_user=user, status=Settlement.Status.REQUESTED).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        groups = [{"id": group.id, "name": group.name, "emoji": group.emoji, "member_count": group.members.count(), "total_spend": str(group.expenses.filter(status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]).aggregate(total=Sum("amount"))["total"] or Decimal("0"))} for group in [membership.group for membership in memberships]]
+        return Response({
+            "user": user_payload(user),
+            "currency": {"code": "BDT", "symbol": "৳"},
+            "group_count": len(groups),
+            "expense_count": expenses.count(),
+            "total_spend": str(expenses.aggregate(total=Sum("amount"))["total"] or Decimal("0")),
+            "paid_total": str(paid),
+            "owed_total": str(owed),
+            "pending_to_pay": str(settlements_sent),
+            "pending_to_receive": str(settlements_received),
+            "unread_notifications": Notification.objects.filter(user=user, is_read=False).count(),
+            "pending_invitations": GroupInvitation.objects.filter(invitee=user, status=GroupInvitation.Status.PENDING).count(),
+            "groups": groups,
+        })

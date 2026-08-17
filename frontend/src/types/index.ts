@@ -1,4 +1,4 @@
-export type View = "overview" | "expenses" | "settle" | "plan" | "chat";
+export type View = "dashboard" | "overview" | "expenses" | "settle" | "plan" | "chat";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
 export type ChatKind = "group" | "direct";
 export type AttachmentKind = "image" | "video" | "file" | "gif";
