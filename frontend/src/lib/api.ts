@@ -1,4 +1,5 @@
 export type ApiError = { success: false; error: { code: string; message: string; fields?: Record<string, string> } };
+type BackendValidationError = Record<string, string[] | string> & { detail?: string; error?: { message?: string } };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const ACCESS_TOKEN_KEY = "splitwise_plus_access_token";
@@ -18,8 +19,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as ApiError | null;
-    throw new Error(payload?.error?.message ?? (response.status === 401 ? "Your session has expired. Please sign in again." : "We could not complete that request."));
+    const payload = (await response.json().catch(() => null)) as (ApiError | BackendValidationError | null);
+    const structuredMessage = (payload as ApiError | null)?.error?.message;
+    const detailMessage = typeof (payload as BackendValidationError | null)?.detail === "string" ? (payload as BackendValidationError).detail : undefined;
+    const fieldMessage = payload && typeof payload === "object"
+      ? Object.entries(payload as BackendValidationError)
+          .filter(([key]) => key !== "detail" && key !== "error")
+          .flatMap(([key, value]) => {
+            const messages = Array.isArray(value) ? value : [value];
+            return messages.filter((message): message is string => typeof message === "string").map((message) => `${key === "non_field_errors" ? "" : `${key.split("_").join(" ")}: `}${message}`);
+          })
+          .join(" ")
+      : "";
+    const message = structuredMessage ?? detailMessage ?? fieldMessage;
+    throw new Error(message || (response.status === 401 ? "Your session has expired. Please sign in again." : `Request failed (${response.status}). Please check the form details.`));
   }
   return response.json() as Promise<T>;
 }
