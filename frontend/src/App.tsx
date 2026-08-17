@@ -70,6 +70,13 @@ function App() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [profileImage, setProfileImage] = useState<string | undefined>();
+  const [connectedSummary, setConnectedSummary] = useState<{ total_spend: string; expense_count: number; member_count: number } | null>(null);
+  const [connectedBudgets, setConnectedBudgets] = useState<import("./lib/api").Budget[]>([]);
+  const [connectedNotifications, setConnectedNotifications] = useState<import("./lib/api").NotificationItem[]>([]);
+  const [connectedSettlementPlan, setConnectedSettlementPlan] = useState<import("./lib/api").SettlementPlan | null>(null);
+  const [connectedRecurring, setConnectedRecurring] = useState<import("./lib/api").RecurringExpense[]>([]);
+  const [connectedEvents, setConnectedEvents] = useState<import("./lib/api").GroupEvent[]>([]);
+  const [connectedPolls, setConnectedPolls] = useState<import("./lib/api").Poll[]>([]);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const enterWorkspace = () => { setShowAuth(false); setShowLanding(false); };
@@ -78,11 +85,29 @@ function App() {
   const navigate = (view: View) => { setActiveView(view); setShowLanding(false); };
   const selectGroup = (group: Group) => { setActiveGroup(group); setShowGroupMenu(false); setActiveView("overview"); notify(`Switched to ${group.name}.`); };
   const activeMessages = conversation.kind === "group" ? chat : (privateChats[conversation.memberId ?? ""] ?? []);
+  const hydrateMessages = async () => {
+    if (!getAccessToken()) return;
+    try {
+      const rows = conversation.kind === "group" && /^\d+$/.test(activeGroup.id) ? await api.groupMessages(activeGroup.id) : conversation.memberId && /^\d+$/.test(conversation.memberId) ? await api.directMessages(conversation.memberId) : [];
+      const mapped = (rows as Array<{ id: number; author: number; author_name: string; author_initials: string; body: string; attachments: ChatAttachment[]; reactions: { emoji: string; count: number }[]; created_at: string }>).map((row) => ({ id: String(row.id), senderId: String(row.author), member: row.author_name, initials: row.author_initials, message: row.body, time: new Date(row.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), color: "#99b8ff", mine: row.author === authUser?.id, attachments: row.attachments || [], reactions: row.reactions || [], read: true }));
+      if (conversation.kind === "group" && mapped.length) setChat(mapped); else if (conversation.memberId && mapped.length) setPrivateChats((current) => ({ ...current, [conversation.memberId as string]: mapped }));
+    } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not load chat history."); }
+  };
+
+  useEffect(() => { void hydrateMessages(); }, [activeGroup.id, conversation.kind, conversation.memberId, authUser?.id]);
 
   useEffect(() => {
     if (!getAccessToken()) return;
-    api.me().then(setAuthUser).catch(() => { clearSession(); setAuthUser(null); });
+    api.me().then((user) => { setAuthUser(user); setShowLanding(false); }).catch(() => { clearSession(); setAuthUser(null); });
   }, []);
+
+  useEffect(() => {
+    if (!authUser) return;
+    api.groups().then((items) => {
+      const backendGroups = (items as Array<{ id: number; name: string; emoji: string; member_count: number }>).map((item, index) => ({ id: String(item.id), name: item.name, emoji: item.emoji || "✦", meta: "Synced workspace", members: item.member_count, total: 0, accent: ["#b7f36b", "#8dd8ff", "#ffb1d5"][index % 3], currency: "BDT" as const }));
+      if (backendGroups.length) setActiveGroup(backendGroups[0]);
+    }).catch((requestError) => notify(requestError instanceof Error ? requestError.message : "Could not load your groups."));
+  }, [authUser]);
 
   useEffect(() => {
     if (activeView !== "chat") return;
@@ -97,15 +122,47 @@ function App() {
     return () => socket.close();
   }, [activeGroup.id, activeView, conversation.kind, conversation.memberId]);
 
-  const addExpense = (expense: Expense) => {
-    setExpenses((current) => [expense, ...current]);
-    setActivity((current) => [{ id: crypto.randomUUID(), member: "Rafi", initials: "RF", action: "added", target: expense.title, time: "Just now", color: "#b7f36b" }, ...current]);
+  const loadConnectedGroup = async (groupId: string) => {
+    if (!getAccessToken() || !/^\\d+$/.test(groupId)) return;
+    try {
+      const [summary, budgets, notifications, settlementPlan, recurring, events, polls] = await Promise.all([api.groupSummary(groupId), api.budgets(groupId), api.notifications(), api.settlementPlan(groupId), api.recurringExpenses(groupId), api.events(groupId), api.polls(groupId)]);
+      setConnectedSummary(summary);
+      setConnectedBudgets(budgets);
+      setConnectedNotifications(notifications);
+      setConnectedSettlementPlan(settlementPlan);
+      setConnectedRecurring(recurring);
+      setConnectedEvents(events);
+      setConnectedPolls(polls);
+      const backendExpenses = await api.expenses(groupId) as Array<{ id: number; title: string; category: string; amount: string; payer_name: string; occurred_on: string; note: string; status: string }>;
+      if (backendExpenses.length) setExpenses(backendExpenses.map((item) => ({ id: String(item.id), title: item.title, category: item.category, amount: Number(item.amount), payer: item.payer_name, date: item.occurred_on, note: item.note, status: item.status === "confirmed" ? "Confirmed" : "Pending" })));
+      const backendActivity = await api.activity(groupId);
+      if (backendActivity.length) setActivity(backendActivity.map((item) => ({ id: String(item.id), member: item.actor_name, initials: item.actor_initials, action: item.action, target: item.target, time: new Date(item.created_at).toLocaleString(), color: "#b7f36b" })));
+    } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not sync this group."); }
+  };
+
+  useEffect(() => { if (authUser) void loadConnectedGroup(activeGroup.id); }, [authUser, activeGroup.id]);
+
+  const addExpense = async (expense: Expense) => {
+    if (authUser && /^\\d+$/.test(activeGroup.id)) {
+      try {
+        await api.createExpense({ group: Number(activeGroup.id), title: expense.title, category: expense.category, amount: expense.amount.toFixed(2), payer: authUser.id, note: expense.note, occurred_on: new Date().toISOString().slice(0, 10), split_mode: expense.status === "Confirmed" ? "equal" : "exact" });
+        await loadConnectedGroup(activeGroup.id);
+      } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not save the expense."); return; }
+    } else setExpenses((current) => [expense, ...current]);
+    setActivity((current) => [{ id: crypto.randomUUID(), member: authUser?.display_name || "Rafi", initials: "RF", action: "added", target: expense.title, time: "Just now", color: "#b7f36b" }, ...current]);
     setShowExpense(false); navigate("expenses"); notify("Expense saved and balances recalculated in ৳");
   };
 
-  const sendMessage = (message: string, attachments: ChatAttachment[] = [], replyTo?: string) => {
+  const sendMessage = async (message: string, attachments: ChatAttachment[] = [], replyTo?: string) => {
     if (!message.trim() && attachments.length === 0) return;
-    const next: ChatMessage = { id: crypto.randomUUID(), senderId: "me", member: "Rafi", initials: "RF", message, time: "Now", color: "#b7f36b", mine: true, attachments, replyTo, read: false };
+    const next: ChatMessage = { id: crypto.randomUUID(), senderId: "me", member: authUser?.display_name || "Rafi", initials: "RF", message, time: "Now", color: "#b7f36b", mine: true, attachments, replyTo, read: false };
+    if (authUser && /^\\d+$/.test(activeGroup.id)) {
+      try {
+        const saved = await api.sendMessage(conversation.kind === "group" ? { group: Number(activeGroup.id), kind: "group", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined } : { recipient: Number(conversation.memberId), kind: "direct", body: message, attachments, reply_to: replyTo ? Number(replyTo) : undefined });
+        const persisted = saved as { id: number; created_at: string; author_name?: string };
+        next.id = String(persisted.id); next.time = new Date(persisted.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Could not send the message."); return; }
+    }
     if (conversation.kind === "group") setChat((current) => [...current, next]);
     else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: [...(current[conversation.memberId ?? ""] ?? []), next] }));
     notify(attachments.length ? "Shared to the conversation" : "Message sent");
@@ -114,6 +171,7 @@ function App() {
   const openDirect = (member: Member) => { setConversation({ id: `dm-${member.id}`, kind: "direct", title: member.name, subtitle: member.online ? "Active now" : member.profile.lastSeen ?? "Active recently", memberId: member.id, unread: 0, lastMessage: "Start a private chat", accent: member.color }); };
   const addReaction = (id: string, emoji: string) => {
     const updater = (items: ChatMessage[]) => items.map((item) => item.id !== id ? item : { ...item, reactions: [...(item.reactions ?? []).filter((reaction) => reaction.emoji !== emoji), { emoji, count: ((item.reactions ?? []).find((reaction) => reaction.emoji === emoji)?.count ?? 0) + 1, reacted: true }] });
+    if (authUser && /^\\d+$/.test(id)) void api.reactMessage(id, emoji).catch((requestError) => notify(requestError instanceof Error ? requestError.message : "Could not add reaction."));
     if (conversation.kind === "group") setChat(updater); else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: updater(current[conversation.memberId ?? ""] ?? []) }));
   };
 
@@ -128,6 +186,7 @@ function App() {
         {activeView === "settle" && <SettlePage activeGroup={activeGroup} onToast={notify} />}
         {activeView === "plan" && <PlanPage activeGroup={activeGroup} onToast={notify} />}
         {activeView === "chat" && <ChatPage activeGroup={activeGroup} conversations={[conversation, ...members.slice(1, 4).map((member) => ({ id: `dm-${member.id}`, kind: "direct" as const, title: member.name, subtitle: member.online ? "Active now" : member.profile.lastSeen ?? "Active recently", memberId: member.id, unread: member.id === "nabil" ? 1 : 0, lastMessage: member.id === "nabil" ? "Bro, I uploaded the ride receipt." : "Start a private chat", accent: member.color }))]} activeConversation={conversation} onSelectConversation={setConversation} chat={activeMessages} onSend={sendMessage} onReact={addReaction} onOpenProfile={(id) => setShowProfile(members.find((member) => member.id === id) ?? null)} onOpenDirect={openDirect} chatTheme={chatTheme} onThemeChange={setChatTheme} />}
+        {authUser && <ConnectedFeaturePanel activeGroup={activeGroup} currentUserId={authUser.id} summary={connectedSummary} budgets={connectedBudgets} notifications={connectedNotifications} settlementPlan={connectedSettlementPlan} recurring={connectedRecurring} events={connectedEvents} polls={connectedPolls} onSync={() => loadConnectedGroup(activeGroup.id)} onToast={notify} />}
       </div>
     </main>
     <div className="mobile-nav">{(["overview", "expenses", "settle", "plan", "chat"] as View[]).map((view) => <button key={view} className={activeView === view ? "active" : ""} onClick={() => navigate(view)}><NavIcon view={view} /><span>{view === "overview" ? "Home" : view === "settle" ? "Settle" : view[0].toUpperCase() + view.slice(1)}</span></button>)}</div>
@@ -136,6 +195,21 @@ function App() {
     {showProfile && <ProfileDrawer member={showProfile} avatarUrl={showProfile.id === "me" ? profileImage : undefined} onClose={() => setShowProfile(null)} onMessage={() => { if (showProfile.id !== "me") openDirect(showProfile); setShowProfile(null); navigate("chat"); }} onAvatarChange={(url) => { setProfileImage(url); notify("Profile picture updated"); }} />}
     {toast && <div className="toast"><Check size={16} /> {toast}</div>}
   </div>;
+}
+
+function ConnectedFeaturePanel({ activeGroup, currentUserId, summary, budgets, notifications, settlementPlan, recurring, events, polls, onSync, onToast }: { activeGroup: Group; currentUserId: number; summary: { total_spend: string; expense_count: number; member_count: number } | null; budgets: import("./lib/api").Budget[]; notifications: import("./lib/api").NotificationItem[]; settlementPlan: import("./lib/api").SettlementPlan | null; recurring: import("./lib/api").RecurringExpense[]; events: import("./lib/api").GroupEvent[]; polls: import("./lib/api").Poll[]; onSync: () => Promise<void>; onToast: (message: string) => void }) {
+  const [budgetName, setBudgetName] = useState("");
+  const [budgetAmount, setBudgetAmount] = useState("");
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [recurringTitle, setRecurringTitle] = useState("");
+  const [recurringAmount, setRecurringAmount] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const isConnected = /^\d+$/.test(activeGroup.id);
+  const createBudget = async () => { if (!isConnected || !budgetName || !budgetAmount) return; try { await api.createBudget({ group: Number(activeGroup.id), name: budgetName, category: "All", amount: budgetAmount, period: "monthly", starts_on: new Date().toISOString().slice(0, 10) }); setBudgetName(""); setBudgetAmount(""); await onSync(); onToast("Budget created in the shared workspace."); } catch (error) { onToast(error instanceof Error ? error.message : "Could not create budget."); } };
+  const createPoll = async () => { if (!isConnected || !pollQuestion) return; try { await api.createPoll({ group: Number(activeGroup.id), question: pollQuestion, options: ["Yes, I’m in", "Maybe", "Not this time"] }); setPollQuestion(""); await onSync(); onToast("Poll published to the group."); } catch (error) { onToast(error instanceof Error ? error.message : "Could not publish poll."); } };
+  const createRecurring = async () => { if (!isConnected || !recurringTitle || !recurringAmount) return; try { await api.createRecurringExpense({ group: Number(activeGroup.id), title: recurringTitle, category: "Other", amount: recurringAmount, payer: currentUserId, frequency: "monthly", next_run: new Date().toISOString().slice(0, 10), split_mode: "equal" }); setRecurringTitle(""); setRecurringAmount(""); await onSync(); onToast("Recurring expense scheduled."); } catch (error) { onToast(error instanceof Error ? error.message : "Could not schedule recurring expense."); } };
+  const createEvent = async () => { if (!isConnected || !eventTitle) return; try { await api.createEvent({ group: Number(activeGroup.id), title: eventTitle, description: "Shared group event", starts_at: new Date(Date.now() + 86400000).toISOString(), location: "To be decided", budget: "0", checklist: [] }); setEventTitle(""); await onSync(); onToast("Group event created."); } catch (error) { onToast(error instanceof Error ? error.message : "Could not create event."); } };
+  return <section className="connected-feature-panel"><div className="page-header"><div><div className="eyebrow muted"><span className="eyebrow-dot" /> LIVE BACKEND SYNC</div><h2>Make the group more useful.</h2><p>{isConnected ? "These numbers and actions are connected to Django for " + activeGroup.name + "." : "Sign in with a seeded workspace to activate shared data."}</p></div><button className="outline-button" onClick={() => void onSync()}><Activity size={15} /> Sync now</button></div><div className="insight-grid"><div className="glass-card insight-card"><span className="muted-label">SHARED SPEND</span><strong>{summary ? money(Number(summary.total_spend)) : "৳ —"}</strong><small>{summary?.expense_count ?? 0} expenses · {summary?.member_count ?? activeGroup.members} members</small></div><div className="glass-card insight-card"><span className="muted-label">ACTIVE BUDGETS</span><strong>{budgets.length}</strong><small>{budgets.filter((budget) => budget.percent >= 80).length} need attention</small></div><div className="glass-card insight-card"><span className="muted-label">INBOX</span><strong>{notifications.filter((item) => !item.is_read).length}</strong><small>unread group updates</small></div></div><div className="connected-action-grid"><div className="glass-card connected-action"><span className="muted-label">NEW BUDGET</span><div className="connected-form-row"><input value={budgetName} onChange={(event) => setBudgetName(event.target.value)} placeholder="e.g. April groceries" /><input value={budgetAmount} onChange={(event) => setBudgetAmount(event.target.value.replace(/[^0-9.]/g, ""))} placeholder="৳ amount" inputMode="decimal" /><button className="primary-button" onClick={() => void createBudget()}><Target size={15} /> Save</button></div></div><div className="glass-card connected-action"><span className="muted-label">QUICK POLL</span><div className="connected-form-row"><input value={pollQuestion} onChange={(event) => setPollQuestion(event.target.value)} placeholder="Ask the group a decision question" /><button className="secondary-button" onClick={() => void createPoll()}><Check size={15} /> Publish</button></div></div><div className="glass-card connected-action"><span className="muted-label">RECURRING EXPENSE</span><div className="connected-form-row"><input value={recurringTitle} onChange={(event) => setRecurringTitle(event.target.value)} placeholder="e.g. Monthly Wi‑Fi" /><input value={recurringAmount} onChange={(event) => setRecurringAmount(event.target.value.replace(/[^0-9.]/g, ""))} placeholder="৳ amount" /><button className="secondary-button" onClick={() => void createRecurring()}><CalendarDays size={15} /> Schedule</button></div><small>{recurring.length} scheduled in this group</small></div><div className="glass-card connected-action"><span className="muted-label">GROUP EVENT</span><div className="connected-form-row"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="e.g. Friday river cruise" /><button className="secondary-button" onClick={() => void createEvent()}><CalendarDays size={15} /> Add event</button></div><small>{events.length} upcoming events · {polls.length} active polls</small></div></div><div className="glass-card connected-action"><span className="muted-label">OPTIMIZED SETTLEMENTS</span>{settlementPlan?.transfers.length ? settlementPlan.transfers.map((transfer) => <div className="connected-list-row" key={`${transfer.from_user}-${transfer.to_user}`}><span>{transfer.from_name} → {transfer.to_name}</span><strong>{money(Number(transfer.amount))}</strong></div>) : <small>No open transfers yet. Add shared expenses to generate the fewest payments.</small>}</div></section>;
 }
 
 function AuthModal({ mode, onModeChange, onClose, onSuccess, onDemo }: { mode: "signin" | "signup"; onModeChange: (mode: "signin" | "signup") => void; onClose: () => void; onSuccess: (payload: { access: string; refresh: string; user: AuthUser }) => void; onDemo: () => void }) {
