@@ -307,6 +307,18 @@ function App() {
     });
     if (conversation.kind === "group") setChat(updater); else setPrivateChats((current) => ({ ...current, [conversation.memberId ?? ""]: updater(current[conversation.memberId ?? ""] ?? []) }));
   };
+  const markCurrentThreadRead = async () => {
+    const unread = activeMessages.filter((message) => !message.mine && !message.read && /^\d+$/.test(message.id));
+    await Promise.all(unread.map((message) => api.markMessageRead(message.id).then((row) => updateActiveMessage(normalizeMessage(row, authUser?.id)))));
+    notify(unread.length ? "Conversation marked read." : "No unread messages in this conversation.");
+  };
+  const changeChatTheme = async (nextTheme: string) => {
+    setChatTheme(nextTheme);
+    if (authUser) {
+      try { await api.updateProfile({ theme: nextTheme }); }
+      catch (requestError) { notify(requestError instanceof Error ? requestError.message : "Theme could not be saved."); }
+    }
+  };
 
   if (showLanding) return <><Landing onEnter={() => { setAuthMode("signin"); setShowAuth(true); }} onNavigate={navigate} />{showAuth && <AuthModal mode={authMode} onModeChange={setAuthMode} onClose={() => setShowAuth(false)} onSuccess={handleAuthSuccess} onDemo={enterWorkspace} />}</>;
   return <div className={`app-shell ${theme}`}>
