@@ -74,3 +74,9 @@ A real poll, `Where should the group eat next?`, was published with the persiste
 A recurring expense, `Monthly Wi-Fi`, was scheduled for ৳1,200 monthly with a next run date of 25 August 2026. The Plan page displayed the saved schedule and a real `Generate now` action. Clicking it created an actual expense in the group ledger, changed shared spend to ৳1,200 and one expense, advanced the next run date, and displayed `Recurring expense generated in the ledger.`
 
 The Plan page now provides functional creation forms for events, polls, and recurring expenses; real poll voting; event RSVP toggling; recurring-expense generation; backend refresh after every mutation; and truthful empty states when a group has no plans.
+
+## Dashboard chart verification — 2026-08-17
+
+The authenticated Dashboard now renders two chart panels instead of blank visual cards. With the persisted Mahi Circle data, the Shared spend by group chart showed a ৳1,200 bar for Mahi Circle with visible y-axis labels ৳1,200, ৳600, and ৳0. The Money position chart showed the live Paid value of ৳1,200 and zero bars for Share, To pay, and To receive, with the same visible axis scale and labels. The page displayed the chart headings, live totals, gridline baseline, group label, and finance-position labels in the browser.
+
+The no-data case was also verified with a fresh account, `nila_chart_2026`. The Dashboard showed no groups and rendered both charts with visible axes, gridlines, a ৳0 baseline, labels, zero-value placeholders, and the message `No recorded amounts yet. The axes are ready for your first shared transaction.` No fabricated data was displayed.
