@@ -29,6 +29,8 @@ export interface Expense {
   note: string;
   receipt?: boolean;
   status: "Confirmed" | "Pending";
+  backendPayerId?: number;
+  backendParticipants?: { user: number; share_amount: number }[];
 }
 
 export interface ActivityItem {
@@ -92,4 +94,5 @@ export interface Group {
   total: number;
   accent: string;
   currency: "BDT";
+  members_detail?: { user_id: number; name: string; initials: string; role: string }[];
 }

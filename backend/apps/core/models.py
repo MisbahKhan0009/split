@@ -1,4 +1,6 @@
 from django.conf import settings
+import uuid
+
 from django.db import models
 
 
@@ -33,6 +35,24 @@ class Group(TimeStamped):
 
     def __str__(self):
         return self.name
+
+
+class GroupInvitation(TimeStamped):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+        REVOKED = "revoked", "Revoked"
+
+    group = models.ForeignKey("Group", on_delete=models.CASCADE, related_name="invitations")
+    inviter = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_group_invitations")
+    invitee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_group_invitations")
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["group", "invitee"], condition=models.Q(status="pending"), name="unique_pending_group_invite")]
 
 
 class GroupMembership(TimeStamped):

@@ -15,6 +15,8 @@ export type ActivityEvent = { id: number; group: number; actor: number; actor_na
 export type NotificationItem = { id: number; group: number | null; kind: string; title: string; body: string; target_url: string; is_read: boolean; created_at: string };
 export type Poll = { id: number; group: number; creator: number; creator_name: string; question: string; options: { id: number; label: string; votes: number }[]; total_votes: number; closes_at: string | null; is_closed: boolean; created_at: string };
 export type GroupEvent = { id: number; group: number; creator: number; creator_name: string; title: string; description: string; starts_at: string; location: string; budget: string; checklist: string[]; attendees: number[]; attendee_count: number; created_at: string };
+export type DirectoryUser = { id: number; username: string; first_name: string; last_name: string; display_name: string; initials: string };
+export type GroupInvitation = { id: number; group: number; group_name: string; inviter: number; inviter_name: string; invitee: number; invitee_name: string; invitee_username: string; token: string; invite_url: string; status: "pending" | "accepted" | "declined" | "revoked"; accepted_at: string | null; created_at: string };
 
 export function getAccessToken() { return window.localStorage.getItem(ACCESS_TOKEN_KEY); }
 export function clearSession() { window.localStorage.removeItem(ACCESS_TOKEN_KEY); window.localStorage.removeItem(REFRESH_TOKEN_KEY); }
@@ -46,6 +48,13 @@ export const api = {
   signin: (payload: { username: string; password: string }) => request<AuthResponse>("/auth/token/", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<AuthUser>("/auth/me/"),
   groups: () => request<unknown[]>("/groups/"),
+  createGroup: (payload: { name: string; slug: string; emoji?: string; description?: string }) => request<unknown>("/groups/", { method: "POST", body: JSON.stringify(payload) }),
+  directoryUsers: (search = "") => request<DirectoryUser[]>(`/directory/users/${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  invitations: () => request<GroupInvitation[]>("/invitations/"),
+  createInvitation: (payload: { group: number; username: string }) => request<GroupInvitation>("/invitations/", { method: "POST", body: JSON.stringify(payload) }),
+  acceptInvitation: (id: string | number) => request<GroupInvitation>(`/invitations/${id}/accept/`, { method: "POST", body: JSON.stringify({}) }),
+  acceptInvitationByToken: (token: string) => request<GroupInvitation>(`/invitations/accept_by_token/?token=${encodeURIComponent(token)}`, { method: "POST", body: JSON.stringify({}) }),
+  declineInvitation: (id: string | number) => request<GroupInvitation>(`/invitations/${id}/decline/`, { method: "POST", body: JSON.stringify({}) }),
   groupSummary: (groupId: string | number) => request<GroupSummary>(`/groups/${groupId}/summary/`),
   settlementPlan: (groupId: string | number) => request<SettlementPlan>(`/groups/${groupId}/settlement_plan/`),
   expenses: (groupId?: string | number) => request<unknown[]>(`/expenses/${groupId ? `?group=${groupId}` : ""}`),

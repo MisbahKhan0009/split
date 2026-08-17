@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from .models import (
     ActivityEvent, Budget, ChatMessage, Expense, ExpenseComment, ExpenseParticipant,
-    Group, GroupEvent, GroupMembership, GroupComment, Notification, Poll, PollOption,
+    Group, GroupEvent, GroupMembership, GroupComment, GroupInvitation, Notification, Poll, PollOption,
     PollVote, RecurringExpense, Settlement, UserProfile,
 )
 
@@ -35,6 +35,21 @@ def log_activity(group, actor, action, target, metadata=None):
     return event
 
 
+class UserDirectorySerializer(serializers.ModelSerializer):
+    display_name = serializers.SerializerMethodField()
+    initials = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "first_name", "last_name", "display_name", "initials"]
+
+    def get_display_name(self, obj):
+        return user_display(obj)
+
+    def get_initials(self, obj):
+        return "".join(part[0] for part in user_display(obj).split()[:2]).upper()
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     initials = serializers.SerializerMethodField()
@@ -48,6 +63,31 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_initials(self, obj):
         return "".join(part[0] for part in user_display(obj.user).split()[:2]).upper()
+
+
+class GroupInvitationSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source="group.name", read_only=True)
+    inviter_name = serializers.SerializerMethodField()
+    invitee_name = serializers.SerializerMethodField()
+    invitee_username = serializers.CharField(source="invitee.username", read_only=True)
+    token = serializers.UUIDField(read_only=True)
+    invite_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GroupInvitation
+        fields = ["id", "group", "group_name", "inviter", "inviter_name", "invitee", "invitee_name", "invitee_username", "token", "invite_url", "status", "accepted_at", "created_at"]
+        read_only_fields = ["inviter", "token", "status", "accepted_at", "created_at"]
+
+    def get_inviter_name(self, obj):
+        return user_display(obj.inviter)
+
+    def get_invitee_name(self, obj):
+        return user_display(obj.invitee)
+
+    def get_invite_url(self, obj):
+        request = self.context.get("request")
+        path = f"/invitations/{obj.token}/"
+        return request.build_absolute_uri(path) if request else path
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -319,6 +359,89 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
     def get_recipient_name(self, obj):
         return user_display(obj.recipient) if obj.recipient else None
+
+
+class UserDirectoryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = UserDirectorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = User.objects.filter(is_active=True).exclude(id=self.request.user.id).order_by("username")
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search))
+        return queryset[:20]
+
+
+class GroupInvitationViewSet(viewsets.ModelViewSet):
+    serializer_class = GroupInvitationSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        user = self.request.user
+        return GroupInvitation.objects.filter(Q(invitee=user) | Q(inviter=user)).select_related("group", "inviter", "invitee").order_by("-created_at")
+
+    def create(self, request, *args, **kwargs):
+        group_id = request.data.get("group")
+        username = str(request.data.get("username", "")).strip()
+        if not group_id or not username:
+            raise serializers.ValidationError({"group": "Group and username are required."})
+        group = Group.objects.filter(pk=group_id, members=request.user).first()
+        if not group:
+            raise serializers.ValidationError({"group": "You must be an active member of this group."})
+        invitee = User.objects.filter(username__iexact=username, is_active=True).first()
+        if not invitee:
+            raise serializers.ValidationError({"username": "No active user was found with that username."})
+        if invitee.id == request.user.id or group.members.filter(pk=invitee.id).exists():
+            raise serializers.ValidationError({"username": "That user is already a member of this group."})
+        invitation, created = GroupInvitation.objects.get_or_create(group=group, invitee=invitee, status=GroupInvitation.Status.PENDING, defaults={"inviter": request.user})
+        if not created:
+            invitation.inviter = request.user
+            invitation.save(update_fields=["inviter", "updated_at"])
+        Notification.objects.create(user=invitee, group=group, kind="invitation", title=f"{user_display(request.user)} invited you", body=f"Join {group.name}", target_url=f"/invitations/{invitation.token}/")
+        return Response(self.get_serializer(invitation).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        invitation = self.get_object()
+        if invitation.invitee_id != request.user.id:
+            return Response({"detail": "Only the invited user can accept this invitation."}, status=status.HTTP_403_FORBIDDEN)
+        if invitation.status != GroupInvitation.Status.PENDING:
+            return Response(self.get_serializer(invitation).data)
+        GroupMembership.objects.get_or_create(group=invitation.group, user=request.user, defaults={"role": GroupMembership.Role.MEMBER, "is_active": True})
+        invitation.status = GroupInvitation.Status.ACCEPTED
+        invitation.accepted_at = timezone.now()
+        invitation.save(update_fields=["status", "accepted_at", "updated_at"])
+        log_activity(invitation.group, request.user, "joined group", invitation.group.name)
+        Notification.objects.create(user=invitation.inviter, group=invitation.group, kind="invitation", title=f"{user_display(request.user)} joined", body=f"{user_display(request.user)} accepted your invitation.")
+        return Response(self.get_serializer(invitation).data)
+
+    @action(detail=False, methods=["post"], url_path="accept_by_token")
+    def accept_by_token(self, request):
+        token = request.query_params.get("token") or request.data.get("token")
+        invitation = GroupInvitation.objects.filter(token=token).select_related("group", "inviter", "invitee").first()
+        if not invitation:
+            return Response({"detail": "Invitation link is invalid or expired."}, status=status.HTTP_404_NOT_FOUND)
+        if invitation.invitee_id != request.user.id:
+            return Response({"detail": "Sign in as the invited username before accepting this invitation."}, status=status.HTTP_403_FORBIDDEN)
+        if invitation.status == GroupInvitation.Status.PENDING:
+            GroupMembership.objects.get_or_create(group=invitation.group, user=request.user, defaults={"role": GroupMembership.Role.MEMBER, "is_active": True})
+            invitation.status = GroupInvitation.Status.ACCEPTED
+            invitation.accepted_at = timezone.now()
+            invitation.save(update_fields=["status", "accepted_at", "updated_at"])
+            log_activity(invitation.group, request.user, "joined group", invitation.group.name)
+            Notification.objects.create(user=invitation.inviter, group=invitation.group, kind="invitation", title=f"{user_display(request.user)} joined", body=f"{user_display(request.user)} accepted your invitation.")
+        return Response(self.get_serializer(invitation).data)
+
+    @action(detail=True, methods=["post"])
+    def decline(self, request, pk=None):
+        invitation = self.get_object()
+        if invitation.invitee_id != request.user.id:
+            return Response({"detail": "Only the invited user can decline this invitation."}, status=status.HTTP_403_FORBIDDEN)
+        invitation.status = GroupInvitation.Status.DECLINED
+        invitation.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(invitation).data)
 
 
 class GroupViewSet(viewsets.ModelViewSet):
