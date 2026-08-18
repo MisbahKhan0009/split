@@ -41,7 +41,12 @@ export interface Expense {
   receipt?: boolean;
   status: "Confirmed" | "Pending";
   backendPayerId?: number;
-  backendParticipants?: { user: number; share_amount: number }[];
+  backendParticipants?: {
+    user: number;
+    share_amount: number;
+    share_value?: number;
+  }[];
+  splitMode?: "equal" | "exact" | "percentage";
 }
 
 export interface ActivityItem {

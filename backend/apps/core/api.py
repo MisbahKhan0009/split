@@ -294,18 +294,20 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return {"code": "BDT", "symbol": "৳"}
 
     def validate(self, attrs):
-        if attrs["amount"] <= 0:
+        # On a partial update (e.g. PATCHing only the receipt file), fields not
+        # included in this request are absent from attrs; fall back to the
+        # existing instance so those checks don't crash on a KeyError.
+        amount = attrs.get("amount", getattr(self.instance, "amount", None))
+        if amount is not None and amount <= 0:
             raise serializers.ValidationError(
                 {"amount": "Expense amount must be greater than zero."}
             )
-        if attrs.get("split_mode", "equal") not in {
-            "equal",
-            "exact",
-            "percentage",
-            "shares",
-        }:
+        split_mode = attrs.get(
+            "split_mode", getattr(self.instance, "split_mode", "equal")
+        )
+        if split_mode not in {"equal", "exact", "percentage", "shares"}:
             raise serializers.ValidationError({"split_mode": "Unsupported split mode."})
-        group = attrs.get("group")
+        group = attrs.get("group", getattr(self.instance, "group", None))
         request = self.context.get("request")
         if group and request and not member_of(request.user, group):
             raise serializers.ValidationError(

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -13,8 +13,17 @@ import {
   X,
 } from "lucide-react";
 import type { Expense } from "../types";
-import { members, money } from "../data/demoData";
+import { memberColors, money } from "../data/demoData";
 import { Avatar } from "./Avatar";
+
+type MemberOption = {
+  user_id: number;
+  name: string;
+  initials: string;
+  role: string;
+};
+
+type SplitMode = "Equal" | "Exact" | "Percentage";
 
 export function ExpenseModal({
   onClose,
@@ -24,49 +33,125 @@ export function ExpenseModal({
 }: {
   onClose: () => void;
   onSave: (expense: Expense) => void;
-  memberOptions: {
-    user_id: number;
-    name: string;
-    initials: string;
-    role: string;
-  }[];
+  memberOptions: MemberOption[];
   currentUserId: number;
 }) {
+  const people: MemberOption[] = memberOptions.length
+    ? memberOptions
+    : [
+        { user_id: -1, name: "Rafi", initials: "RF", role: "member" },
+        { user_id: -2, name: "Tisha", initials: "TS", role: "member" },
+        { user_id: -3, name: "Nabil", initials: "NB", role: "member" },
+        { user_id: -4, name: "Mahi", initials: "MH", role: "member" },
+      ];
+  // Every member gets a stable color from the shared palette, keyed by their
+  // position in the group so it matches the color used elsewhere for them.
+  const colorFor = (userId: number) => {
+    const index = people.findIndex((person) => person.user_id === userId);
+    return memberColors[(index < 0 ? 0 : index) % memberColors.length];
+  };
+
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("Food");
-  const [mode, setMode] = useState("Equal");
-  const [payer, setPayer] = useState(
-    memberOptions.find((member) => member.user_id === currentUserId)?.name ||
-      memberOptions[0]?.name ||
-      "Rafi",
+  const [mode, setMode] = useState<SplitMode>("Equal");
+  const [payerId, setPayerId] = useState(
+    people.find((person) => person.user_id === currentUserId)?.user_id ??
+      people[0]?.user_id,
   );
+  const [payerMenuOpen, setPayerMenuOpen] = useState(false);
+  const payerMenuRef = useRef<HTMLDivElement | null>(null);
   const [note, setNote] = useState("");
   const [receiptAttached, setReceiptAttached] = useState(false);
-  const [participants, setParticipants] = useState(() =>
-    memberOptions.length
-      ? memberOptions.map((member) => member.name)
-      : ["Rafi", "Tisha", "Nabil", "Mahi"],
+  const [participantIds, setParticipantIds] = useState<number[]>(() =>
+    people.map((person) => person.user_id),
   );
+  // Manual entries for Exact/Percentage modes, keyed by user id.
+  const [exactAmounts, setExactAmounts] = useState<Record<number, string>>({});
+  const [percentages, setPercentages] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (
+        payerMenuRef.current &&
+        !payerMenuRef.current.contains(event.target as Node)
+      )
+        setPayerMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, []);
+
+  const payer = people.find((person) => person.user_id === payerId) ?? people[0];
   const parsedAmount = Number(amount) || 0;
+  const participants = people.filter((person) =>
+    participantIds.includes(person.user_id),
+  );
   const perPerson = parsedAmount / Math.max(participants.length, 1);
+
+  const exactTotal = participants.reduce(
+    (sum, person) => sum + (Number(exactAmounts[person.user_id]) || 0),
+    0,
+  );
+  const percentageTotal = participants.reduce(
+    (sum, person) => sum + (Number(percentages[person.user_id]) || 0),
+    0,
+  );
+
+  const shareFor = (userId: number): number => {
+    if (mode === "Equal") return perPerson;
+    if (mode === "Exact") return Number(exactAmounts[userId]) || 0;
+    return (parsedAmount * (Number(percentages[userId]) || 0)) / 100;
+  };
+
+  const splitIsValid =
+    mode === "Equal"
+      ? participants.length > 0
+      : mode === "Exact"
+        ? participants.length > 0 &&
+          participants.every((person) => Number(exactAmounts[person.user_id]) > 0) &&
+          Math.abs(exactTotal - parsedAmount) < 0.01
+        : participants.length > 0 &&
+          participants.every((person) => Number(percentages[person.user_id]) > 0) &&
+          Math.abs(percentageTotal - 100) < 0.01;
+
   const canSave =
-    title.trim().length > 1 && parsedAmount > 0 && participants.length > 0;
+    title.trim().length > 1 && parsedAmount > 0 && splitIsValid;
+
   const categories = [
     { name: "Food", icon: "◒", hint: "Meals, coffee, snacks" },
     { name: "Stay", icon: "⌂", hint: "Hotels and rentals" },
     { name: "Transport", icon: "↗", hint: "Rides and tickets" },
     { name: "Activities", icon: "✦", hint: "Plans and experiences" },
   ];
-  const people = memberOptions.length
-    ? memberOptions.map((member) => member.name)
-    : ["Rafi", "Tisha", "Nabil", "Mahi", "Shuvo"];
-  const toggleParticipant = (name: string) =>
-    setParticipants((current) =>
-      current.includes(name)
-        ? current.filter((item) => item !== name)
-        : [...current, name],
+
+  const toggleParticipant = (userId: number) =>
+    setParticipantIds((current) =>
+      current.includes(userId)
+        ? current.filter((item) => item !== userId)
+        : [...current, userId],
     );
+
+  const changeMode = (nextMode: SplitMode) => {
+    setMode(nextMode);
+    if (nextMode === "Exact" && Object.keys(exactAmounts).length === 0) {
+      // Seed with an even split so the fields aren't empty on first switch.
+      const seeded: Record<number, string> = {};
+      participants.forEach((person) => {
+        seeded[person.user_id] = perPerson ? perPerson.toFixed(2) : "";
+      });
+      setExactAmounts(seeded);
+    }
+    if (nextMode === "Percentage" && Object.keys(percentages).length === 0) {
+      const even = participants.length ? (100 / participants.length).toFixed(2) : "";
+      const seeded: Record<number, string> = {};
+      participants.forEach((person) => {
+        seeded[person.user_id] = even;
+      });
+      setPercentages(seeded);
+    }
+  };
+
   return (
     <div
       className="modal-backdrop expense-backdrop"
@@ -78,13 +163,13 @@ export function ExpenseModal({
         className="expense-modal expense-modal-modern"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!canSave) return;
+          if (!canSave || !payer) return;
           onSave({
             id: crypto.randomUUID(),
             title: title.trim(),
             category,
             amount: parsedAmount,
-            payer,
+            payer: payer.name,
             date: "Just now",
             note:
               note.trim() ||
@@ -93,14 +178,14 @@ export function ExpenseModal({
                 : `${mode} split`),
             receipt: receiptAttached,
             status: "Confirmed",
-            backendPayerId:
-              memberOptions.find((member) => member.name === payer)?.user_id ??
-              currentUserId,
-            backendParticipants: participants.map((name) => ({
-              user:
-                memberOptions.find((member) => member.name === name)?.user_id ??
-                currentUserId,
-              share_amount: mode === "Equal" ? perPerson : perPerson,
+            splitMode:
+              mode === "Equal" ? "equal" : mode === "Exact" ? "exact" : "percentage",
+            backendPayerId: payer.user_id >= 0 ? payer.user_id : currentUserId,
+            backendParticipants: participants.map((person) => ({
+              user: person.user_id >= 0 ? person.user_id : currentUserId,
+              share_amount: Number(shareFor(person.user_id).toFixed(2)),
+              share_value:
+                mode === "Percentage" ? Number(percentages[person.user_id]) || 0 : 0,
             })),
           });
         }}
@@ -149,27 +234,58 @@ export function ExpenseModal({
                   />
                 </div>
               </label>
-              <label className="expense-field">
+              <div className="expense-field">
                 <span>Paid by</span>
-                <div className="expense-select-shell">
-                  <Avatar
-                    member={
-                      members.find((member) => member.name === payer) ||
-                      members[0]
-                    }
-                    size="sm"
-                  />
-                  <select
-                    value={payer}
-                    onChange={(event) => setPayer(event.target.value)}
+                <div className="payer-picker" ref={payerMenuRef}>
+                  <button
+                    type="button"
+                    className="expense-select-shell payer-trigger"
+                    onClick={() => setPayerMenuOpen((value) => !value)}
+                    aria-expanded={payerMenuOpen}
                   >
-                    {people.map((person) => (
-                      <option key={person}>{person}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} />
+                    {payer && (
+                      <Avatar
+                        member={{
+                          initials: payer.initials,
+                          color: colorFor(payer.user_id),
+                        }}
+                        size="sm"
+                      />
+                    )}
+                    <span className="payer-trigger-name">
+                      {payer?.name ?? "Select payer"}
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+                  {payerMenuOpen && (
+                    <div className="payer-menu">
+                      {people.map((person) => (
+                        <button
+                          type="button"
+                          key={person.user_id}
+                          className={
+                            person.user_id === payerId ? "selected" : ""
+                          }
+                          onClick={() => {
+                            setPayerId(person.user_id);
+                            setPayerMenuOpen(false);
+                          }}
+                        >
+                          <Avatar
+                            member={{
+                              initials: person.initials,
+                              color: colorFor(person.user_id),
+                            }}
+                            size="sm"
+                          />
+                          <span>{person.name}</span>
+                          {person.user_id === payerId && <Check size={13} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </label>
+              </div>
             </div>
             <div className="expense-section-label">
               <span>Choose a category</span>
@@ -197,18 +313,22 @@ export function ExpenseModal({
             </div>
             <div className="participant-picker">
               {people.map((person) => {
-                const member =
-                  members.find((item) => item.name === person) || members[0];
-                const selected = participants.includes(person);
+                const selected = participantIds.includes(person.user_id);
                 return (
                   <button
                     type="button"
-                    key={person}
+                    key={person.user_id}
                     className={`participant-chip ${selected ? "selected" : ""}`}
-                    onClick={() => toggleParticipant(person)}
+                    onClick={() => toggleParticipant(person.user_id)}
                   >
-                    <Avatar member={member} size="sm" />
-                    <span>{person}</span>
+                    <Avatar
+                      member={{
+                        initials: person.initials,
+                        color: colorFor(person.user_id),
+                      }}
+                      size="sm"
+                    />
+                    <span>{person.name}</span>
                     {selected ? <Check size={13} /> : <Plus size={13} />}
                   </button>
                 );
@@ -219,28 +339,30 @@ export function ExpenseModal({
               <small>Change this later if the group decides differently</small>
             </div>
             <div className="split-mode-grid">
-              {[
-                {
-                  name: "Equal",
-                  icon: <Users size={16} />,
-                  copy: "Everyone pays the same",
-                },
-                {
-                  name: "Exact",
-                  icon: <WalletCards size={16} />,
-                  copy: "Set each person’s amount",
-                },
-                {
-                  name: "Percentage",
-                  icon: <Split size={16} />,
-                  copy: "Split by contribution",
-                },
-              ].map((item) => (
+              {(
+                [
+                  {
+                    name: "Equal" as SplitMode,
+                    icon: <Users size={16} />,
+                    copy: "Everyone pays the same",
+                  },
+                  {
+                    name: "Exact" as SplitMode,
+                    icon: <WalletCards size={16} />,
+                    copy: "Set each person’s amount",
+                  },
+                  {
+                    name: "Percentage" as SplitMode,
+                    icon: <Split size={16} />,
+                    copy: "Split by contribution",
+                  },
+                ]
+              ).map((item) => (
                 <button
                   type="button"
                   key={item.name}
                   className={`split-mode-choice ${mode === item.name ? "selected" : ""}`}
-                  onClick={() => setMode(item.name)}
+                  onClick={() => changeMode(item.name)}
                 >
                   {item.icon}
                   <span>
@@ -251,6 +373,89 @@ export function ExpenseModal({
                 </button>
               ))}
             </div>
+            {mode === "Exact" && (
+              <div className="split-entry-list">
+                {participants.map((person) => (
+                  <div className="split-entry-row" key={person.user_id}>
+                    <Avatar
+                      member={{
+                        initials: person.initials,
+                        color: colorFor(person.user_id),
+                      }}
+                      size="sm"
+                    />
+                    <span>{person.name}</span>
+                    <div className="split-entry-input">
+                      <b>৳</b>
+                      <input
+                        value={exactAmounts[person.user_id] ?? ""}
+                        onChange={(event) =>
+                          setExactAmounts((current) => ({
+                            ...current,
+                            [person.user_id]: event.target.value.replace(
+                              /[^0-9.]/g,
+                              "",
+                            ),
+                          }))
+                        }
+                        inputMode="decimal"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div
+                  className={`split-entry-total ${Math.abs(exactTotal - parsedAmount) < 0.01 ? "balanced" : "unbalanced"}`}
+                >
+                  <span>Assigned</span>
+                  <strong>
+                    {money(exactTotal)} of {money(parsedAmount)}
+                  </strong>
+                </div>
+              </div>
+            )}
+            {mode === "Percentage" && (
+              <div className="split-entry-list">
+                {participants.map((person) => (
+                  <div className="split-entry-row" key={person.user_id}>
+                    <Avatar
+                      member={{
+                        initials: person.initials,
+                        color: colorFor(person.user_id),
+                      }}
+                      size="sm"
+                    />
+                    <span>{person.name}</span>
+                    <div className="split-entry-input percentage-input">
+                      <input
+                        value={percentages[person.user_id] ?? ""}
+                        onChange={(event) =>
+                          setPercentages((current) => ({
+                            ...current,
+                            [person.user_id]: event.target.value.replace(
+                              /[^0-9.]/g,
+                              "",
+                            ),
+                          }))
+                        }
+                        inputMode="decimal"
+                        placeholder="0"
+                      />
+                      <b>%</b>
+                    </div>
+                    <small className="split-entry-derived">
+                      {money(shareFor(person.user_id))}
+                    </small>
+                  </div>
+                ))}
+                <div
+                  className={`split-entry-total ${Math.abs(percentageTotal - 100) < 0.01 ? "balanced" : "unbalanced"}`}
+                >
+                  <span>Assigned</span>
+                  <strong>{percentageTotal.toFixed(1)}% of 100%</strong>
+                </div>
+              </div>
+            )}
             <label className="expense-field expense-note-field">
               <span>
                 Note <em>Optional</em>
@@ -294,7 +499,7 @@ export function ExpenseModal({
             </div>
             <h3>{title.trim() || "Your new expense"}</h3>
             <p>
-              {category} · paid by {payer}
+              {category} · paid by {payer?.name ?? "—"}
             </p>
             <div className="preview-total">
               <small>Total</small>
@@ -305,16 +510,18 @@ export function ExpenseModal({
               <span>
                 <Users size={15} /> {participants.length} people
               </span>
-              <strong>{money(perPerson)} each</strong>
+              <strong>
+                {mode === "Equal" ? `${money(perPerson)} each` : mode}
+              </strong>
             </div>
             <div className="preview-members">
               {participants.slice(0, 4).map((person) => (
                 <Avatar
-                  key={person}
-                  member={
-                    members.find((member) => member.name === person) ||
-                    members[0]
-                  }
+                  key={person.user_id}
+                  member={{
+                    initials: person.initials,
+                    color: colorFor(person.user_id),
+                  }}
                   size="sm"
                 />
               ))}
@@ -322,6 +529,15 @@ export function ExpenseModal({
                 <span className="preview-more">+{participants.length - 4}</span>
               )}
             </div>
+            {mode !== "Equal" && !splitIsValid && parsedAmount > 0 && (
+              <div className="preview-warning">
+                <span>
+                  {mode === "Exact"
+                    ? "Amounts must add up to the total."
+                    : "Percentages must add up to 100%."}
+                </span>
+              </div>
+            )}
             <div className="preview-tip">
               <Sparkles size={14} />
               <span>
@@ -339,7 +555,13 @@ export function ExpenseModal({
             type="submit"
             disabled={!canSave}
           >
-            <span>{canSave ? "Save expense" : "Add a title and amount"}</span>
+            <span>
+              {!title.trim() || parsedAmount <= 0
+                ? "Add a title and amount"
+                : !splitIsValid
+                  ? "Fix the split before saving"
+                  : "Save expense"}
+            </span>
             <ArrowUpRight size={16} />
           </button>
         </div>

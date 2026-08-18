@@ -671,11 +671,11 @@ function App() {
           payer: expense.backendPayerId ?? authUser.id,
           note: expense.note,
           occurred_on: new Date().toISOString().slice(0, 10),
-          split_mode: expense.status === "Confirmed" ? "equal" : "exact",
+          split_mode: expense.splitMode ?? "equal",
           participants: expense.backendParticipants?.map((participant) => ({
             user: participant.user,
             share_amount: participant.share_amount,
-            share_value: 0,
+            share_value: participant.share_value ?? 0,
           })),
         });
         await loadConnectedGroup(activeGroup.id);
