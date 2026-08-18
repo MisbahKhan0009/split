@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Filter, Plus, Receipt, Sparkles, ArrowUpRight } from "lucide-react";
 import type { Expense, Group } from "../types";
 import { money } from "../data/demoData";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
+import { ExpenseDetailModal } from "../components/ExpenseDetailModal";
 
 export function ExpensesPage({
   activeGroup,
@@ -17,6 +20,7 @@ export function ExpensesPage({
   onToast: (message: string) => void;
 }) {
   const [filter, setFilter] = useState("All");
+  const [detail, setDetail] = useState<Expense | null>(null);
   const filtered = expenses.filter(
     (expense) =>
       `${expense.title} ${expense.category} ${expense.payer}`
@@ -24,6 +28,22 @@ export function ExpensesPage({
         .includes(query.toLowerCase()) &&
       (filter === "All" || expense.category === filter),
   );
+  const {
+    pageItems,
+    page,
+    pageCount,
+    total,
+    pageSize,
+    nextPage,
+    prevPage,
+    goTo,
+    resetPage,
+  } = usePagination(filtered, 10);
+
+  useEffect(() => {
+    resetPage();
+  }, [filter, query]);
+
   return (
     <>
       <div className="page-header">
@@ -66,7 +86,7 @@ export function ExpensesPage({
         {filtered.length === 0 ? (
           <EmptyState onAddExpense={onAddExpense} />
         ) : (
-          filtered.map((expense) => (
+          pageItems.map((expense) => (
             <div className="expense-row" key={expense.id}>
               <span
                 className={`expense-category ${expense.category.toLowerCase()}`}
@@ -97,7 +117,7 @@ export function ExpensesPage({
               </strong>
               <button
                 className="row-arrow"
-                onClick={() => onToast(`${expense.title} details opened`)}
+                onClick={() => setDetail(expense)}
               >
                 <ArrowUpRight size={16} />
               </button>
@@ -105,10 +125,22 @@ export function ExpensesPage({
           ))
         )}
       </div>
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        onPrev={prevPage}
+        onNext={nextPage}
+        onGoTo={goTo}
+      />
       <div className="page-footer-hint">
         <Sparkles size={15} /> Tip: attach a receipt to make every expense
         easier to trust.
       </div>
+      {detail && (
+        <ExpenseDetailModal expense={detail} onClose={() => setDetail(null)} />
+      )}
     </>
   );
 }

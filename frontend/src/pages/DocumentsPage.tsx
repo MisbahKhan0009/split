@@ -1,7 +1,15 @@
 import { useState } from "react";
-import { Download, ExternalLink, FileText, Paperclip, Sparkles } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  FileText,
+  Paperclip,
+  Sparkles,
+} from "lucide-react";
 import type { Expense, Group } from "../types";
 import { money } from "../data/demoData";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function DocumentsPage({
   activeGroup,
@@ -13,6 +21,16 @@ export function DocumentsPage({
   onAddExpense: () => void;
 }) {
   const documents = expenses.filter((expense) => expense.receipt);
+  const {
+    pageItems,
+    page,
+    pageCount,
+    total,
+    pageSize,
+    nextPage,
+    prevPage,
+    goTo,
+  } = usePagination(documents, 10);
   return (
     <>
       <div className="page-header">
@@ -34,7 +52,7 @@ export function DocumentsPage({
       </div>
       <div className="expense-list glass-card">
         {documents.length ? (
-          documents.map((expense) => (
+          pageItems.map((expense) => (
             <div className="expense-row document-row" key={expense.id}>
               <span className="expense-category">
                 <FileText size={16} />
@@ -106,6 +124,15 @@ export function DocumentsPage({
           </div>
         )}
       </div>
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        onPrev={prevPage}
+        onNext={nextPage}
+        onGoTo={goTo}
+      />
       <div className="page-footer-hint">
         <Sparkles size={15} /> Receipts attached from the expense form appear
         here automatically.

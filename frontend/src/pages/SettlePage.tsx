@@ -10,6 +10,8 @@ import type { Group } from "../types";
 import type { SettlementDTO, SettlementPlan } from "../lib/api";
 import { money } from "../data/demoData";
 import { PaymentModal } from "../components/PaymentModal";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function SettlePage({
   activeGroup,
@@ -62,6 +64,9 @@ export function SettlePage({
     (s) => s.status === "requested" && s.to_user === currentUserId,
   );
   const completed = settlements.filter((s) => s.status === "confirmed");
+
+  const completedPagination = usePagination(completed, 8);
+  const transfersPagination = usePagination(transfers, 8);
 
   const totalToSettle = transfers.reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -279,7 +284,7 @@ export function SettlePage({
               <h2>Settlement history</h2>
             </div>
           </div>
-          {completed.map((s) => (
+          {completedPagination.pageItems.map((s) => (
             <div key={s.id} className="settle-review-card completed">
               <div className="settle-review-info">
                 <span
@@ -299,6 +304,15 @@ export function SettlePage({
               </span>
             </div>
           ))}
+          <Pagination
+            page={completedPagination.page}
+            pageCount={completedPagination.pageCount}
+            total={completedPagination.total}
+            pageSize={completedPagination.pageSize}
+            onPrev={completedPagination.prevPage}
+            onNext={completedPagination.nextPage}
+            onGoTo={completedPagination.goTo}
+          />
         </div>
       )}
 
@@ -320,7 +334,7 @@ export function SettlePage({
           </button>
         </div>
         {transfers.length ? (
-          transfers.map((transfer) => (
+          transfersPagination.pageItems.map((transfer) => (
             <div
               key={`${transfer.from_user}-${transfer.to_user}`}
               className="transfer-row"
@@ -353,6 +367,15 @@ export function SettlePage({
             </p>
           </div>
         )}
+        <Pagination
+          page={transfersPagination.page}
+          pageCount={transfersPagination.pageCount}
+          total={transfersPagination.total}
+          pageSize={transfersPagination.pageSize}
+          onPrev={transfersPagination.prevPage}
+          onNext={transfersPagination.nextPage}
+          onGoTo={transfersPagination.goTo}
+        />
       </div>
 
       {/* Payment modal */}

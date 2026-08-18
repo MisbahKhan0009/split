@@ -1,6 +1,8 @@
 import { Activity as ActivityIcon, ArrowUpRight } from "lucide-react";
 import type { ActivityItem, Group } from "../types";
 import { Avatar } from "../components/Avatar";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function ActivityPage({
   activeGroup,
@@ -9,6 +11,17 @@ export function ActivityPage({
   activeGroup: Group;
   activity: ActivityItem[];
 }) {
+  const {
+    pageItems,
+    page,
+    pageCount,
+    total,
+    pageSize,
+    nextPage,
+    prevPage,
+    goTo,
+  } = usePagination(activity, 15);
+
   return (
     <>
       <div className="page-header">
@@ -26,7 +39,7 @@ export function ActivityPage({
       </div>
       <div className="activity-card glass-card activity-page-list">
         {activity.length ? (
-          activity.map((item) => (
+          pageItems.map((item) => (
             <div className="activity-row" key={item.id}>
               <Avatar
                 member={{ initials: item.initials, color: item.color }}
@@ -53,6 +66,15 @@ export function ActivityPage({
           </div>
         )}
       </div>
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        onPrev={prevPage}
+        onNext={nextPage}
+        onGoTo={goTo}
+      />
     </>
   );
 }

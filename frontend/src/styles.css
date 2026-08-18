@@ -5127,7 +5127,7 @@ h2 em {
 .account-menu {
   position: absolute;
   z-index: 30;
-  right: 18px;
+  left: 14px;
   bottom: 76px;
   width: 238px;
   padding: 10px;
@@ -5399,7 +5399,7 @@ h2 em {
 }
 @media (max-width: 520px) {
   .account-menu {
-    right: 10px;
+    left: 10px;
     bottom: 72px;
     width: min(238px, calc(100vw - 28px));
   }
@@ -6687,4 +6687,159 @@ h2 em {
 }
 .recurring-generate {
   align-self: flex-start;
+}
+
+/* Expense detail modal */
+.expense-detail-backdrop {
+  z-index: 40;
+}
+.expense-detail-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(84vh, 700px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+.expense-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.expense-detail-head > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.expense-detail-head strong {
+  font: 600 14px "Space Grotesk";
+  letter-spacing: -0.03em;
+}
+.expense-detail-head small {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+.expense-detail-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: rgba(183, 243, 107, 0.13);
+  color: var(--lime);
+}
+.expense-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+.expense-detail-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.expense-detail-amount strong {
+  color: var(--text);
+  font: 600 28px "Space Grotesk";
+  letter-spacing: -0.06em;
+}
+.expense-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.expense-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.expense-detail-field > span {
+  color: var(--dim);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.expense-detail-field > strong {
+  color: var(--text);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.status-confirmed {
+  color: var(--lime);
+}
+.status-pending {
+  color: var(--amber);
+}
+.expense-detail-note {
+  margin-bottom: 16px;
+}
+.expense-detail-note p {
+  margin: 6px 0 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.expense-detail-participants {
+  margin-bottom: 16px;
+}
+.expense-detail-participants > .muted-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.expense-detail-participant-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.expense-detail-participant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 11px;
+}
+.expense-detail-participant > span {
+  color: var(--muted);
+}
+.expense-detail-participant > strong {
+  color: var(--text);
+}
+.expense-detail-receipt {
+  margin-bottom: 8px;
+}
+.expense-detail-receipt > .muted-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.expense-detail-receipt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.expense-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+.outline-button.small,
+.secondary-button.small {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 10px;
 }

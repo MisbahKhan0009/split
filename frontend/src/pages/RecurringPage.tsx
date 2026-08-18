@@ -3,6 +3,8 @@ import { CalendarDays, Plus, X } from "lucide-react";
 import type { Group } from "../types";
 import { api, type RecurringExpense } from "../lib/api";
 import { money } from "../data/demoData";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function RecurringPage({
   activeGroup,
@@ -21,11 +23,20 @@ export function RecurringPage({
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [frequency, setFrequency] = useState("monthly");
-  const [nextRun, setNextRun] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [nextRun, setNextRun] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const isConnected = /^\d+$/.test(activeGroup.id);
+
+  const {
+    pageItems,
+    page,
+    pageCount,
+    total,
+    pageSize,
+    nextPage,
+    prevPage,
+    goTo,
+  } = usePagination(recurring, 10);
 
   const create = async () => {
     if (!isConnected || !title.trim() || !amount || !nextRun) return;
@@ -163,7 +174,7 @@ export function RecurringPage({
 
       <div className="recurring-page-grid">
         {recurring.length ? (
-          recurring.map((item) => (
+          pageItems.map((item) => (
             <div className="glass-card recurring-card" key={item.id}>
               <div className="recurring-card-head">
                 <span className="feature-icon lime">
@@ -222,6 +233,15 @@ export function RecurringPage({
           </div>
         )}
       </div>
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        onPrev={prevPage}
+        onNext={nextPage}
+        onGoTo={goTo}
+      />
     </>
   );
 }

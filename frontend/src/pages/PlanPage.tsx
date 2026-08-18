@@ -8,6 +8,8 @@ import {
   type RecurringExpense,
 } from "../lib/api";
 import { money } from "../data/demoData";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function PlanPage({
   activeGroup,
@@ -41,6 +43,8 @@ export function PlanPage({
     new Date().toISOString().slice(0, 10),
   );
   const isConnected = /^\d+$/.test(activeGroup.id);
+  const eventsPagination = usePagination(events, 6);
+  const pollsPagination = usePagination(polls, 6);
   const run = async (operation: () => Promise<void>, success: string) => {
     setBusy(true);
     try {
@@ -332,7 +336,7 @@ export function PlanPage({
             </button>
           </div>
           {events.length ? (
-            events.map((event) => (
+            eventsPagination.pageItems.map((event) => (
               <div className="timeline-item" key={event.id}>
                 <div className="timeline-date">
                   <b>{new Date(event.starts_at).getDate()}</b>
@@ -379,6 +383,15 @@ export function PlanPage({
               </button>
             </div>
           )}
+          <Pagination
+            page={eventsPagination.page}
+            pageCount={eventsPagination.pageCount}
+            total={eventsPagination.total}
+            pageSize={eventsPagination.pageSize}
+            onPrev={eventsPagination.prevPage}
+            onNext={eventsPagination.nextPage}
+            onGoTo={eventsPagination.goTo}
+          />
         </div>
         <div className="glass-card task-card">
           <div className="card-heading">
@@ -395,7 +408,7 @@ export function PlanPage({
             </button>
           </div>
           {polls.length ? (
-            polls.map((poll) => (
+            pollsPagination.pageItems.map((poll) => (
               <div className="plan-poll" key={poll.id}>
                 <div className="task-person">
                   <span className="feature-icon blue">
@@ -440,6 +453,15 @@ export function PlanPage({
               </button>
             </div>
           )}
+          <Pagination
+            page={pollsPagination.page}
+            pageCount={pollsPagination.pageCount}
+            total={pollsPagination.total}
+            pageSize={pollsPagination.pageSize}
+            onPrev={pollsPagination.prevPage}
+            onNext={pollsPagination.nextPage}
+            onGoTo={pollsPagination.goTo}
+          />
           {recurring.length ? (
             <div className="recurring-list">
               {recurring.map((item) => (

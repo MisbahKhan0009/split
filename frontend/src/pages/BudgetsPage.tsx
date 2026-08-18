@@ -3,6 +3,8 @@ import { Plus, Target, X } from "lucide-react";
 import type { Group } from "../types";
 import { api, type Budget } from "../lib/api";
 import { money } from "../data/demoData";
+import { usePagination } from "../lib/usePagination";
+import { Pagination } from "../components/Pagination";
 
 export function BudgetsPage({
   activeGroup,
@@ -21,6 +23,17 @@ export function BudgetsPage({
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const isConnected = /^\d+$/.test(activeGroup.id);
+
+  const {
+    pageItems,
+    page,
+    pageCount,
+    total,
+    pageSize,
+    nextPage,
+    prevPage,
+    goTo,
+  } = usePagination(budgets, 12);
 
   const createBudget = async () => {
     if (!isConnected || !name.trim() || !amount) return;
@@ -125,7 +138,7 @@ export function BudgetsPage({
       )}
       <div className="plan-grid budgets-grid">
         {budgets.length ? (
-          budgets.map((budget) => (
+          pageItems.map((budget) => (
             <div className="glass-card budget-detail-card" key={budget.id}>
               <div className="card-topline">
                 <span className="muted-label">
@@ -167,6 +180,15 @@ export function BudgetsPage({
           </div>
         )}
       </div>
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        total={total}
+        pageSize={pageSize}
+        onPrev={prevPage}
+        onNext={nextPage}
+        onGoTo={goTo}
+      />
     </>
   );
 }
