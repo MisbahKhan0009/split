@@ -11,6 +11,7 @@ import {
   Plus,
   Receipt,
   Split,
+  Sparkles,
   Target,
   Users,
   WalletCards,

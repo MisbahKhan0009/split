@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -321,7 +322,15 @@ class ExpenseSerializer(serializers.ModelSerializer):
         expense = Expense.objects.create(**validated_data)
         if participant_data:
             total = sum(Decimal(item["share_amount"]) for item in participant_data)
-            if expense.split_mode in {"exact", "equal"} and total != expense.amount:
+            # Allow a small rounding tolerance (e.g. splitting ৳100 three ways
+            # can legitimately sum to 99.99 or 100.01 depending on how a
+            # client rounds each share). Reject only real mismatches.
+            if expense.split_mode in {
+                "exact",
+                "equal",
+            } and abs(
+                total - expense.amount
+            ) > Decimal("0.02"):
                 raise serializers.ValidationError(
                     {"participants": f"Participant shares must equal {expense.amount}."}
                 )
@@ -908,7 +917,13 @@ class GroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def settlement_plan(self, request, pk=None):
         group = self.get_object()
-        balances = {user.id: Decimal("0") for user in group.members.all()}
+        # Use a defaultdict rather than pre-seeding balances only for current
+        # members: a payer or participant on an older expense may no longer
+        # be an active member (removed from the group, or was never a
+        # member if the expense predates a membership change). Excluding
+        # them would either KeyError or silently drop their share, so the
+        # plan should account for money owed even if that member later left.
+        balances = defaultdict(Decimal)
         for expense in group.expenses.filter(
             status__in=[Expense.Status.PENDING, Expense.Status.CONFIRMED]
         ).prefetch_related("participants"):
@@ -942,15 +957,21 @@ class GroupViewSet(viewsets.ModelViewSet):
                 i += 1
             if creditors[j][1] <= Decimal("0.01"):
                 j += 1
-        names = {u.id: user_display(u) for u in group.members.all()}
+        involved_ids = {item["from_user"] for item in transfers} | {
+            item["to_user"] for item in transfers
+        }
+        names = {
+            user.id: user_display(user)
+            for user in User.objects.filter(id__in=involved_ids)
+        }
         return Response(
             {
                 "currency": {"code": "BDT", "symbol": "৳"},
                 "transfers": [
                     {
                         **item,
-                        "from_name": names[item["from_user"]],
-                        "to_name": names[item["to_user"]],
+                        "from_name": names.get(item["from_user"], "Former member"),
+                        "to_name": names.get(item["to_user"], "Former member"),
                     }
                     for item in transfers
                 ],
@@ -1007,12 +1028,43 @@ class SettlementViewSet(viewsets.ModelViewSet):
         return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
+        group = serializer.validated_data["group"]
+        from_user = serializer.validated_data["from_user"]
+        to_user = serializer.validated_data["to_user"]
+        requester = self.request.user
+        # Anyone can request money that's owed *to* them. A settlement can
+        # also be raised on someone else's behalf, but only by the group
+        # owner, so members can't be pressured into paying by a random peer.
+        is_owner = group.owner_id == requester.id
+        if requester.id not in {from_user.id, to_user.id} and not is_owner:
+            raise serializers.ValidationError(
+                {
+                    "detail": "Only the group owner can request a settlement on behalf of another member."
+                }
+            )
+        if from_user.id == to_user.id:
+            raise serializers.ValidationError(
+                {"to_user": "A member cannot owe themselves."}
+            )
         settlement = serializer.save()
+        Notification.objects.create(
+            user=settlement.from_user,
+            group=settlement.group,
+            kind="settlement",
+            title=f"{user_display(requester)} requested a payment",
+            body=f"You owe {user_display(settlement.to_user)} ৳ {settlement.amount}.",
+            target_url=f"/settle/{settlement.id}/",
+        )
         log_activity(
             settlement.group,
-            self.request.user,
+            requester,
             "requested settlement",
             f"৳ {settlement.amount}",
+            {
+                "settlement_id": settlement.id,
+                "from_user": from_user.id,
+                "to_user": to_user.id,
+            },
         )
 
     @action(detail=True, methods=["post"])
@@ -1033,6 +1085,53 @@ class SettlementViewSet(viewsets.ModelViewSet):
             request.user,
             "confirmed settlement",
             f"৳ {settlement.amount}",
+        )
+        return Response(self.get_serializer(settlement).data)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        """Simulate paying a settlement. No real money moves; this exists so
+        the workspace can demonstrate a full request -> pay -> confirmed loop
+        without integrating a real payment gateway."""
+        settlement = self.get_object()
+        if settlement.from_user_id != request.user.id:
+            return Response(
+                {"detail": "Only the person who owes this settlement can pay it."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if settlement.status != Settlement.Status.REQUESTED:
+            return Response(self.get_serializer(settlement).data)
+        method = str(request.data.get("payment_method", "simulated"))[:40]
+        settlement.status = Settlement.Status.CONFIRMED
+        settlement.payment_method = method
+        settlement.payment_reference = f"SIM-{uuid.uuid4().hex[:10].upper()}"
+        settlement.paid_at = timezone.now()
+        settlement.save(
+            update_fields=[
+                "status",
+                "payment_method",
+                "payment_reference",
+                "paid_at",
+                "updated_at",
+            ]
+        )
+        Notification.objects.create(
+            user=settlement.to_user,
+            group=settlement.group,
+            kind="settlement",
+            title=f"{user_display(request.user)} paid you",
+            body=f"৳ {settlement.amount} was paid via {method} (simulated payment).",
+            target_url=f"/settle/{settlement.id}/",
+        )
+        log_activity(
+            settlement.group,
+            request.user,
+            "paid settlement",
+            f"৳ {settlement.amount}",
+            {
+                "settlement_id": settlement.id,
+                "payment_reference": settlement.payment_reference,
+            },
         )
         return Response(self.get_serializer(settlement).data)
 

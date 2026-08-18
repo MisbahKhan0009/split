@@ -1,4 +1,4 @@
-import { FileText, Paperclip, Sparkles } from "lucide-react";
+import { Download, FileText, Paperclip, Sparkles } from "lucide-react";
 import type { Expense, Group } from "../types";
 import { money } from "../data/demoData";
 
@@ -34,7 +34,7 @@ export function DocumentsPage({
       <div className="expense-list glass-card">
         {documents.length ? (
           documents.map((expense) => (
-            <div className="expense-row" key={expense.id}>
+            <div className="expense-row document-row" key={expense.id}>
               <span className="expense-category">
                 <FileText size={16} />
               </span>
@@ -50,6 +50,24 @@ export function DocumentsPage({
               <strong className="expense-amount">
                 {money(expense.amount)}
               </strong>
+              {expense.receiptUrl ? (
+                <a
+                  className="document-open"
+                  href={expense.receiptUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open receipt"
+                >
+                  <Download size={15} />
+                </a>
+              ) : (
+                <span
+                  className="document-open disabled"
+                  title="Receipt unavailable"
+                >
+                  <Download size={15} />
+                </span>
+              )}
             </div>
           ))
         ) : (

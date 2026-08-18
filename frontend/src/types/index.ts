@@ -8,6 +8,7 @@ export type View =
   | "budgets"
   | "documents"
   | "activity"
+  | "quick-access"
   | "settings";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
 export type ChatKind = "group" | "direct";
@@ -39,6 +40,9 @@ export interface Expense {
   date: string;
   note: string;
   receipt?: boolean;
+  receiptUrl?: string;
+  receiptFile?: File;
+  backendId?: number;
   status: "Confirmed" | "Pending";
   backendPayerId?: number;
   backendParticipants?: {

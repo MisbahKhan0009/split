@@ -565,72 +565,59 @@ function App() {
 
   const loadConnectedGroup = async (groupId: string) => {
     if (!getAccessToken() || !/^\d+$/.test(groupId)) return;
-    try {
-      const [
-        summary,
-        budgets,
-        notifications,
-        settlementPlan,
-        recurring,
-        events,
-        polls,
-      ] = await Promise.all([
-        api.groupSummary(groupId),
-        api.budgets(groupId),
-        api.notifications(),
-        api.settlementPlan(groupId),
-        api.recurringExpenses(groupId),
-        api.events(groupId),
-        api.polls(groupId),
-      ]);
-      setConnectedSummary(summary);
-      setConnectedBudgets(budgets);
-      setConnectedNotifications(notifications);
-      setConnectedSettlementPlan(settlementPlan);
-      setConnectedRecurring(recurring);
-      setConnectedEvents(events);
-      setConnectedPolls(polls);
-      const backendExpenses = (await api.expenses(groupId)) as Array<{
-        id: number;
-        title: string;
-        category: string;
-        amount: string;
-        payer_name: string;
-        occurred_on: string;
-        note: string;
-        status: string;
-      }>;
-      if (backendExpenses.length)
-        setExpenses(
-          backendExpenses.map((item) => ({
-            id: String(item.id),
-            title: item.title,
-            category: item.category,
-            amount: Number(item.amount),
-            payer: item.payer_name,
-            date: item.occurred_on,
-            note: item.note,
-            status: item.status === "confirmed" ? "Confirmed" : "Pending",
-          })),
-        );
-      const backendActivity = await api.activity(groupId);
-      if (backendActivity.length)
-        setActivity(
-          backendActivity.map((item) => ({
-            id: String(item.id),
-            member: item.actor_name,
-            initials: item.actor_initials,
-            action: item.action,
-            target: item.target,
-            time: new Date(item.created_at).toLocaleString(),
-            color: "#b7f36b",
-          })),
-        );
-    } catch (requestError) {
+    // Each piece of connected data is fetched and applied independently.
+    // Promise.all would reject the whole batch (and update nothing) if a
+    // single endpoint failed; allSettled means one bad response can't block
+    // budgets/events/polls/expenses/activity from loading for everyone else.
+    const results = await Promise.allSettled([
+      api.groupSummary(groupId).then(setConnectedSummary),
+      api.budgets(groupId).then(setConnectedBudgets),
+      api.notifications().then(setConnectedNotifications),
+      api.settlementPlan(groupId).then(setConnectedSettlementPlan),
+      api.recurringExpenses(groupId).then(setConnectedRecurring),
+      api.events(groupId).then(setConnectedEvents),
+      api.polls(groupId).then(setConnectedPolls),
+      api.expenses(groupId).then((backendExpenses) => {
+        if (backendExpenses.length)
+          setExpenses(
+            backendExpenses.map((item) => ({
+              id: String(item.id),
+              backendId: item.id,
+              title: item.title,
+              category: item.category,
+              amount: Number(item.amount),
+              payer: item.payer_name,
+              date: item.occurred_on,
+              note: item.note,
+              receipt: Boolean(item.receipt),
+              receiptUrl: item.receipt ?? undefined,
+              status: item.status === "confirmed" ? "Confirmed" : "Pending",
+            })),
+          );
+      }),
+      api.activity(groupId).then((backendActivity) => {
+        if (backendActivity.length)
+          setActivity(
+            backendActivity.map((item) => ({
+              id: String(item.id),
+              member: item.actor_name,
+              initials: item.actor_initials,
+              action: item.action,
+              target: item.target,
+              time: new Date(item.created_at).toLocaleString(),
+              color: "#b7f36b",
+            })),
+          );
+      }),
+    ]);
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failures.length) {
       notify(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not sync this group.",
+        failures[0].reason instanceof Error
+          ? failures[0].reason.message
+          : "Some group data could not sync.",
       );
     }
   };
@@ -663,7 +650,7 @@ function App() {
   const addExpense = async (expense: Expense) => {
     if (authUser && /^\d+$/.test(activeGroup.id)) {
       try {
-        await api.createExpense({
+        const created = await api.createExpense({
           group: Number(activeGroup.id),
           title: expense.title,
           category: expense.category,
@@ -678,6 +665,17 @@ function App() {
             share_value: participant.share_value ?? 0,
           })),
         });
+        if (expense.receiptFile) {
+          try {
+            await api.uploadExpenseReceipt(created.id, expense.receiptFile);
+          } catch (uploadError) {
+            notify(
+              uploadError instanceof Error
+                ? uploadError.message
+                : "Expense saved, but the receipt could not be uploaded.",
+            );
+          }
+        }
         await loadConnectedGroup(activeGroup.id);
         await refreshDashboard();
       } catch (requestError) {
@@ -688,7 +686,14 @@ function App() {
         );
         return;
       }
-    } else setExpenses((current) => [expense, ...current]);
+    } else {
+      // Without a connected backend group there's nowhere to persist the file,
+      // so keep a local object URL just long enough to preview it this session.
+      const localExpense = expense.receiptFile
+        ? { ...expense, receiptUrl: URL.createObjectURL(expense.receiptFile) }
+        : expense;
+      setExpenses((current) => [localExpense, ...current]);
+    }
     setActivity((current) => [
       {
         id: crypto.randomUUID(),

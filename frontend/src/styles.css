@@ -4322,40 +4322,74 @@ h2 em {
 .receipt-upload {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
   margin-top: 14px;
-  padding: 11px;
+  padding: 6px;
   border: 1px dashed rgba(183, 243, 107, 0.3);
   border-radius: 12px;
   background: rgba(183, 243, 107, 0.045);
   color: var(--muted);
-  text-align: left;
 }
 .receipt-upload:hover,
 .receipt-upload.attached {
   border-color: rgba(183, 243, 107, 0.7);
   background: rgba(183, 243, 107, 0.1);
 }
-.receipt-upload > span:nth-child(2) {
+.receipt-upload-main {
   display: flex;
   flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.receipt-upload-main > span:nth-child(2) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
-.receipt-upload strong {
+.receipt-upload-main strong {
+  overflow: hidden;
   color: var(--text);
   font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.receipt-upload small {
+.receipt-upload-main small {
   color: var(--dim);
   font-size: 8px;
 }
-.receipt-upload > svg {
+.receipt-upload-arrow {
+  flex-shrink: 0;
+  margin-right: 5px;
   color: var(--lime);
+}
+.receipt-upload-clear {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+}
+.receipt-upload-clear:hover {
+  background: rgba(255, 145, 162, 0.14);
+  color: #ffb5c2;
 }
 .receipt-upload-icon {
   display: grid;
+  flex-shrink: 0;
   place-items: center;
   width: 29px;
   height: 29px;
@@ -6037,4 +6071,23 @@ h2 em {
     width: auto;
     margin-left: auto;
   }
+}
+
+/* Documents page: open/download link for a real uploaded receipt file */
+.document-open {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 8px;
+  border-radius: 9px;
+  color: var(--lime);
+}
+.document-open:hover {
+  background: var(--surface-soft);
+}
+.document-open.disabled {
+  color: var(--dim);
+  cursor: not-allowed;
 }

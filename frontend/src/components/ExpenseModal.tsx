@@ -11,6 +11,7 @@ import {
   Users,
   WalletCards,
   X,
+  FileText,
 } from "lucide-react";
 import type { Expense } from "../types";
 import { memberColors, money } from "../data/demoData";
@@ -62,7 +63,8 @@ export function ExpenseModal({
   const [payerMenuOpen, setPayerMenuOpen] = useState(false);
   const payerMenuRef = useRef<HTMLDivElement | null>(null);
   const [note, setNote] = useState("");
-  const [receiptAttached, setReceiptAttached] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const [participantIds, setParticipantIds] = useState<number[]>(() =>
     people.map((person) => person.user_id),
   );
@@ -82,7 +84,8 @@ export function ExpenseModal({
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, []);
 
-  const payer = people.find((person) => person.user_id === payerId) ?? people[0];
+  const payer =
+    people.find((person) => person.user_id === payerId) ?? people[0];
   const parsedAmount = Number(amount) || 0;
   const participants = people.filter((person) =>
     participantIds.includes(person.user_id),
@@ -109,14 +112,17 @@ export function ExpenseModal({
       ? participants.length > 0
       : mode === "Exact"
         ? participants.length > 0 &&
-          participants.every((person) => Number(exactAmounts[person.user_id]) > 0) &&
+          participants.every(
+            (person) => Number(exactAmounts[person.user_id]) > 0,
+          ) &&
           Math.abs(exactTotal - parsedAmount) < 0.01
         : participants.length > 0 &&
-          participants.every((person) => Number(percentages[person.user_id]) > 0) &&
+          participants.every(
+            (person) => Number(percentages[person.user_id]) > 0,
+          ) &&
           Math.abs(percentageTotal - 100) < 0.01;
 
-  const canSave =
-    title.trim().length > 1 && parsedAmount > 0 && splitIsValid;
+  const canSave = title.trim().length > 1 && parsedAmount > 0 && splitIsValid;
 
   const categories = [
     { name: "Food", icon: "◒", hint: "Meals, coffee, snacks" },
@@ -143,7 +149,9 @@ export function ExpenseModal({
       setExactAmounts(seeded);
     }
     if (nextMode === "Percentage" && Object.keys(percentages).length === 0) {
-      const even = participants.length ? (100 / participants.length).toFixed(2) : "";
+      const even = participants.length
+        ? (100 / participants.length).toFixed(2)
+        : "";
       const seeded: Record<number, string> = {};
       participants.forEach((person) => {
         seeded[person.user_id] = even;
@@ -176,17 +184,42 @@ export function ExpenseModal({
               (mode === "Equal"
                 ? "Split equally with the group"
                 : `${mode} split`),
-            receipt: receiptAttached,
+            receipt: Boolean(receiptFile),
+            receiptFile: receiptFile ?? undefined,
             status: "Confirmed",
             splitMode:
-              mode === "Equal" ? "equal" : mode === "Exact" ? "exact" : "percentage",
+              mode === "Equal"
+                ? "equal"
+                : mode === "Exact"
+                  ? "exact"
+                  : "percentage",
             backendPayerId: payer.user_id >= 0 ? payer.user_id : currentUserId,
-            backendParticipants: participants.map((person) => ({
-              user: person.user_id >= 0 ? person.user_id : currentUserId,
-              share_amount: Number(shareFor(person.user_id).toFixed(2)),
-              share_value:
-                mode === "Percentage" ? Number(percentages[person.user_id]) || 0 : 0,
-            })),
+            backendParticipants: participants.map((person, index) => {
+              // Rounding each share to 2dp independently can leave the sum a
+              // cent or two off the total (e.g. 100 / 3 -> 33.33 x3 = 99.99).
+              // The backend requires equal/exact shares to sum exactly, so
+              // the last participant absorbs the rounding remainder.
+              const isLast = index === participants.length - 1;
+              const roundedShare = Number(shareFor(person.user_id).toFixed(2));
+              const shareSoFar = participants
+                .slice(0, index)
+                .reduce(
+                  (sum, other) => sum + Number(shareFor(other.user_id).toFixed(2)),
+                  0,
+                );
+              const shareAmount =
+                mode !== "Percentage" && isLast
+                  ? Number((parsedAmount - shareSoFar).toFixed(2))
+                  : roundedShare;
+              return {
+                user: person.user_id >= 0 ? person.user_id : currentUserId,
+                share_amount: shareAmount,
+                share_value:
+                  mode === "Percentage"
+                    ? Number(percentages[person.user_id]) || 0
+                    : 0,
+              };
+            }),
           });
         }}
       >
@@ -339,25 +372,23 @@ export function ExpenseModal({
               <small>Change this later if the group decides differently</small>
             </div>
             <div className="split-mode-grid">
-              {(
-                [
-                  {
-                    name: "Equal" as SplitMode,
-                    icon: <Users size={16} />,
-                    copy: "Everyone pays the same",
-                  },
-                  {
-                    name: "Exact" as SplitMode,
-                    icon: <WalletCards size={16} />,
-                    copy: "Set each person’s amount",
-                  },
-                  {
-                    name: "Percentage" as SplitMode,
-                    icon: <Split size={16} />,
-                    copy: "Split by contribution",
-                  },
-                ]
-              ).map((item) => (
+              {[
+                {
+                  name: "Equal" as SplitMode,
+                  icon: <Users size={16} />,
+                  copy: "Everyone pays the same",
+                },
+                {
+                  name: "Exact" as SplitMode,
+                  icon: <WalletCards size={16} />,
+                  copy: "Set each person’s amount",
+                },
+                {
+                  name: "Percentage" as SplitMode,
+                  icon: <Split size={16} />,
+                  copy: "Split by contribution",
+                },
+              ].map((item) => (
                 <button
                   type="button"
                   key={item.name}
@@ -467,30 +498,54 @@ export function ExpenseModal({
                 rows={2}
               />
             </label>
-            <button
-              type="button"
-              className={`receipt-upload ${receiptAttached ? "attached" : ""}`}
-              onClick={() => setReceiptAttached((value) => !value)}
-            >
-              <span className="receipt-upload-icon">
-                {receiptAttached ? (
-                  <Check size={16} />
-                ) : (
-                  <Paperclip size={16} />
-                )}
-              </span>
-              <span>
-                <strong>
-                  {receiptAttached ? "Receipt attached" : "Attach a receipt"}
-                </strong>
-                <small>
-                  {receiptAttached
-                    ? "Ready to keep the expense trustworthy"
-                    : "Optional · JPG, PNG or PDF"}
-                </small>
-              </span>
-              <ArrowUpRight size={15} />
-            </button>
+            <input
+              ref={receiptInputRef}
+              type="file"
+              hidden
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) setReceiptFile(file);
+                event.target.value = "";
+              }}
+            />
+            <div className={`receipt-upload ${receiptFile ? "attached" : ""}`}>
+              <button
+                type="button"
+                className="receipt-upload-main"
+                onClick={() => receiptInputRef.current?.click()}
+              >
+                <span className="receipt-upload-icon">
+                  {receiptFile ? (
+                    <FileText size={16} />
+                  ) : (
+                    <Paperclip size={16} />
+                  )}
+                </span>
+                <span>
+                  <strong>
+                    {receiptFile ? receiptFile.name : "Attach a receipt"}
+                  </strong>
+                  <small>
+                    {receiptFile
+                      ? "Uploaded to this expense · shows up in Documents"
+                      : "Optional · JPG, PNG, WEBP, or PDF, up to 10 MB"}
+                  </small>
+                </span>
+              </button>
+              {receiptFile ? (
+                <button
+                  type="button"
+                  className="receipt-upload-clear"
+                  onClick={() => setReceiptFile(null)}
+                  aria-label="Remove receipt"
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <ArrowUpRight size={15} className="receipt-upload-arrow" />
+              )}
+            </div>
           </div>
           <aside className="expense-preview-panel">
             <div className="preview-eyebrow">LIVE SPLIT PREVIEW</div>

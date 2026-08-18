@@ -123,6 +123,23 @@ export type SettlementPlan = {
     amount: string;
   }[];
 };
+export type SettlementDTO = {
+  id: number;
+  group: number;
+  from_user: number;
+  from_name: string;
+  to_user: number;
+  to_name: string;
+  amount: string;
+  currency: { code: "BDT"; symbol: "৳" };
+  status: "requested" | "confirmed" | "declined";
+  note: string;
+  payment_method: string;
+  payment_reference: string;
+  proof: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
 export type Budget = {
   id: number;
   group: number;
@@ -149,6 +166,22 @@ export type RecurringExpense = {
   split_mode: string;
   is_active: boolean;
   last_created_expense: number | null;
+};
+export type ExpenseDTO = {
+  id: number;
+  group: number;
+  title: string;
+  category: string;
+  amount: string;
+  currency: { code: "BDT"; symbol: "৳" };
+  payer: number;
+  payer_name: string;
+  note: string;
+  occurred_on: string;
+  split_mode: string;
+  status: string;
+  receipt: string | null;
+  created_at: string;
 };
 export type ActivityEvent = {
   id: number;
@@ -416,12 +449,17 @@ export const api = {
   settlementPlan: (groupId: string | number) =>
     request<SettlementPlan>(`/groups/${groupId}/settlement_plan/`),
   expenses: (groupId?: string | number) =>
-    request<unknown[]>(`/expenses/${groupId ? `?group=${groupId}` : ""}`),
+    request<ExpenseDTO[]>(`/expenses/${groupId ? `?group=${groupId}` : ""}`),
   createExpense: (payload: unknown) =>
-    request<unknown>("/expenses/", {
+    request<ExpenseDTO>("/expenses/", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  uploadExpenseReceipt: (id: string | number, file: File) => {
+    const body = new FormData();
+    body.append("receipt", file);
+    return request<ExpenseDTO>(`/expenses/${id}/`, { method: "PATCH", body });
+  },
   commentExpense: (id: string | number, payload: unknown) =>
     request<unknown>(`/expenses/${id}/comment/`, {
       method: "POST",
