@@ -4905,3 +4905,148 @@ h2 em {
     grid-template-columns: 1fr;
   }
 }
+
+/* Personal dashboard layout: compact stat cards, sections, and list rows.
+   `.insight-card` alone stays the large promo card used on the overview page;
+   inside `.insight-grid` it becomes a compact metric card. */
+.user-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 12px;
+}
+.insight-grid > .insight-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-height: 0;
+  padding: 15px 16px;
+  border-radius: 14px;
+}
+.insight-grid > .insight-card::after {
+  display: none;
+}
+.insight-grid > .insight-card > strong {
+  color: var(--text);
+  font: 600 21px "Space Grotesk";
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+}
+.insight-grid > .insight-card > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 12px;
+}
+.dashboard-section {
+  padding: 18px 19px;
+}
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.section-heading h2 {
+  margin: 5px 0 0;
+  font: 600 18px "Space Grotesk";
+  letter-spacing: -0.05em;
+}
+.connected-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+}
+.connected-list-row > span {
+  min-width: 0;
+}
+.connected-list-row > span small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.connected-list-row > span b {
+  margin-right: 3px;
+}
+.connected-list-row > strong {
+  color: var(--lime);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dashboard-next-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.dashboard-next-step svg {
+  flex-shrink: 0;
+  color: var(--lime);
+}
+.dashboard-next-step strong {
+  color: var(--text);
+}
+.dashboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px;
+}
+.dashboard-empty h2 {
+  margin: 4px 0 0;
+  font: 600 23px "Space Grotesk";
+  letter-spacing: -0.06em;
+}
+.dashboard-empty p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.dashboard-empty .primary-button {
+  margin-top: 6px;
+}
+.empty-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.empty-inline span {
+  color: var(--muted);
+  font-size: 10px;
+}
+@media (max-width: 980px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .insight-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  .insight-grid > .insight-card > strong {
+    font-size: 18px;
+  }
+}

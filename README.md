@@ -101,3 +101,6 @@ git diff --check
 ```
 
 The browser smoke notes in `docs/browser-smoke-test.md` cover the BDT landing page, updated identity, workspace, group dropdown switching, direct group-chat access, expense flow, and Messenger-style messaging screen. Run `python manage.py seed_demo` whenever a clean development database needs realistic groups, expenses, settlements, profiles, and chat messages.
+
+Username: rafi
+Password: splitwise-demo-123
