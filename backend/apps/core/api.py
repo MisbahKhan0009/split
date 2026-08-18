@@ -1047,7 +1047,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Budget.objects.filter(group__members=self.request.user)
+        queryset = Budget.objects.filter(group__members=self.request.user)
+        group_id = self.request.query_params.get("group")
+        return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
         budget = serializer.save()
@@ -1059,7 +1061,9 @@ class RecurringExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return RecurringExpense.objects.filter(group__members=self.request.user)
+        queryset = RecurringExpense.objects.filter(group__members=self.request.user)
+        group_id = self.request.query_params.get("group")
+        return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
         recurring = serializer.save()
@@ -1136,9 +1140,11 @@ class PollViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Poll.objects.filter(group__members=self.request.user).prefetch_related(
-            "options", "votes"
-        )
+        queryset = Poll.objects.filter(
+            group__members=self.request.user
+        ).prefetch_related("options", "votes")
+        group_id = self.request.query_params.get("group")
+        return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
         poll = serializer.save(creator=self.request.user)
@@ -1161,9 +1167,11 @@ class GroupEventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return GroupEvent.objects.filter(
+        queryset = GroupEvent.objects.filter(
             group__members=self.request.user
         ).prefetch_related("attendees")
+        group_id = self.request.query_params.get("group")
+        return queryset.filter(group_id=group_id) if group_id else queryset
 
     def perform_create(self, serializer):
         event = serializer.save(creator=self.request.user)

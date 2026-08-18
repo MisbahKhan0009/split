@@ -5,6 +5,9 @@ export type View =
   | "settle"
   | "plan"
   | "chat"
+  | "budgets"
+  | "documents"
+  | "activity"
   | "settings";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
 export type ChatKind = "group" | "direct";

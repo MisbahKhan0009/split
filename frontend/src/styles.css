@@ -625,6 +625,9 @@ kbd {
 .trend.positive {
   color: var(--lime);
 }
+.trend.warning {
+  color: #f7bf6d;
+}
 .progress-track {
   height: 5px;
   margin-top: 16px;
@@ -5839,4 +5842,32 @@ h2 em {
     width: 100%;
     justify-content: center;
   }
+}
+
+/* Activity page: full-history list reusing .activity-row */
+.activity-page-list {
+  padding: 6px 0;
+}
+.activity-row-marker {
+  color: var(--dim);
+}
+
+/* Budgets page: grid of full budget detail cards */
+.budgets-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.budget-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 19px;
+}
+.budget-detail-name {
+  font: 600 15px "Space Grotesk";
+  letter-spacing: -0.03em;
+}
+.budget-detail-period {
+  margin-top: 4px;
+  color: var(--muted);
+  text-transform: capitalize;
 }
