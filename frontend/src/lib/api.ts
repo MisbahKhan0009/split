@@ -466,14 +466,30 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   settlements: (groupId?: string | number) =>
-    request<unknown[]>(`/settlements/${groupId ? `?group=${groupId}` : ""}`),
-  createSettlement: (payload: unknown) =>
-    request<unknown>("/settlements/", {
+    request<SettlementDTO[]>(
+      `/settlements/${groupId ? `?group=${groupId}` : ""}`,
+    ),
+  createSettlement: (payload: {
+    group: number;
+    from_user: number;
+    to_user: number;
+    amount: string;
+    note?: string;
+  }) =>
+    request<SettlementDTO>("/settlements/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  paySettlement: (
+    id: string | number,
+    payload: { payment_method?: string } = {},
+  ) =>
+    request<SettlementDTO>(`/settlements/${id}/pay/`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   confirmSettlement: (id: string | number, payload: unknown = {}) =>
-    request<unknown>(`/settlements/${id}/confirm/`, {
+    request<SettlementDTO>(`/settlements/${id}/confirm/`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

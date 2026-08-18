@@ -114,6 +114,9 @@ function App() {
   const [connectedSettlementPlan, setConnectedSettlementPlan] = useState<
     import("./lib/api").SettlementPlan | null
   >(null);
+  const [connectedSettlements, setConnectedSettlements] = useState<
+    import("./lib/api").SettlementDTO[]
+  >([]);
   const [connectedRecurring, setConnectedRecurring] = useState<
     import("./lib/api").RecurringExpense[]
   >([]);
@@ -574,6 +577,9 @@ function App() {
       api.budgets(groupId).then(setConnectedBudgets),
       api.notifications().then(setConnectedNotifications),
       api.settlementPlan(groupId).then(setConnectedSettlementPlan),
+      api
+        .settlements(groupId)
+        .then(setConnectedSettlements),
       api.recurringExpenses(groupId).then(setConnectedRecurring),
       api.events(groupId).then(setConnectedEvents),
       api.polls(groupId).then(setConnectedPolls),
@@ -587,7 +593,11 @@ function App() {
               category: item.category,
               amount: Number(item.amount),
               payer: item.payer_name,
-              date: item.occurred_on,
+              date: new Date(`${item.occurred_on}T00:00:00`).toLocaleDateString(
+                "en-BD",
+                { day: "numeric", month: "short", year: "numeric" },
+              ),
+              occurredOn: item.occurred_on,
               note: item.note,
               receipt: Boolean(item.receipt),
               receiptUrl: item.receipt ?? undefined,
@@ -605,6 +615,7 @@ function App() {
               action: item.action,
               target: item.target,
               time: new Date(item.created_at).toLocaleString(),
+              timestamp: item.created_at,
               color: "#b7f36b",
             })),
           );
@@ -657,7 +668,8 @@ function App() {
           amount: expense.amount.toFixed(2),
           payer: expense.backendPayerId ?? authUser.id,
           note: expense.note,
-          occurred_on: new Date().toISOString().slice(0, 10),
+          occurred_on:
+            expense.occurredOn ?? new Date().toISOString().slice(0, 10),
           split_mode: expense.splitMode ?? "equal",
           participants: expense.backendParticipants?.map((participant) => ({
             user: participant.user,
@@ -702,6 +714,7 @@ function App() {
         action: "added",
         target: expense.title,
         time: "Just now",
+        timestamp: new Date().toISOString(),
         color: "#b7f36b",
       },
       ...current,
@@ -1025,6 +1038,40 @@ function App() {
             <SettlePage
               activeGroup={activeGroup}
               settlementPlan={connectedSettlementPlan}
+              settlements={connectedSettlements}
+              currentUserId={authUser?.id ?? 0}
+              isGroupOwner={
+                (
+                  activeGroup.members_detail ?? []
+                ).findIndex(
+                  (m) =>
+                    (m as import("./lib/api").GroupMemberDTO).user_id ===
+                      authUser?.id &&
+                    (m as import("./lib/api").GroupMemberDTO).role === "owner",
+                ) >= 0
+              }
+              onRequestSettlement={async (fromUser, toUser, amount, note) => {
+                await api.createSettlement({
+                  group: Number(activeGroup.id),
+                  from_user: fromUser,
+                  to_user: toUser,
+                  amount: amount.toFixed(2),
+                  note,
+                });
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+                notify("Settlement request sent.");
+              }}
+              onPaySettlement={async (id, paymentMethod) => {
+                await api.paySettlement(id, { payment_method: paymentMethod });
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+                notify("Payment confirmed.");
+              }}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
               onToast={notify}
             />
           )}
@@ -1096,7 +1143,7 @@ function App() {
               onThemeChange={changeChatTheme}
             />
           )}
-          {authUser && hasGroups && (
+          {hasGroups && activeView === "quick-access" && authUser && (
             <ConnectedFeaturePanel
               activeGroup={activeGroup}
               currentUserId={authUser.id}

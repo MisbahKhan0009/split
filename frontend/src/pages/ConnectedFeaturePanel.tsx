@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Activity, CalendarDays, Check, Target } from "lucide-react";
+import {
+  Activity,
+  CalendarDays,
+  Check,
+  MessageSquare,
+  Sparkles,
+  Target,
+  Zap,
+} from "lucide-react";
 import type { Group } from "../types";
 import {
   api,
@@ -47,7 +55,18 @@ export function ConnectedFeaturePanel({
   const [recurringTitle, setRecurringTitle] = useState("");
   const [recurringAmount, setRecurringAmount] = useState("");
   const [eventTitle, setEventTitle] = useState("");
+  const [syncing, setSyncing] = useState(false);
   const isConnected = /^\d+$/.test(activeGroup.id);
+
+  const runSync = async () => {
+    setSyncing(true);
+    try {
+      await onSync();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const createBudget = async () => {
     if (!isConnected || !budgetName || !budgetAmount) return;
     try {
@@ -132,14 +151,17 @@ export function ConnectedFeaturePanel({
       );
     }
   };
+
   return (
     <section className="connected-feature-panel">
-      <div className="page-header">
+      <div className="page-header quick-access-header">
         <div>
           <div className="eyebrow muted">
-            <span className="eyebrow-dot" /> GROUP WORKSPACE
+            <span className="eyebrow-dot" /> QUICK ACCESS
           </div>
-          <h2>Shared finances, in one place.</h2>
+          <h1>
+            Shared finances, in one place. <Zap size={20} />
+          </h1>
           <p>
             {isConnected
               ? "Live balances, budgets, plans, and decisions for " +
@@ -148,10 +170,16 @@ export function ConnectedFeaturePanel({
               : "Connect to a group to load its shared workspace data."}
           </p>
         </div>
-        <button className="outline-button" onClick={() => void onSync()}>
-          <Activity size={15} /> Sync now
+        <button
+          className="outline-button quick-access-sync"
+          onClick={() => void runSync()}
+          disabled={syncing}
+        >
+          <Activity size={15} className={syncing ? "spin" : ""} />
+          {syncing ? "Syncing…" : "Sync now"}
         </button>
       </div>
+
       <div className="insight-grid">
         <div className="glass-card insight-card">
           <span className="muted-label">SHARED SPEND</span>
@@ -179,9 +207,18 @@ export function ConnectedFeaturePanel({
           <small>unread group updates</small>
         </div>
       </div>
+
+      <div className="section-row quick-access-section-row">
+        <div>
+          <span className="muted-label">FAST ACTIONS</span>
+          <h2>Create without leaving this page</h2>
+        </div>
+      </div>
       <div className="connected-action-grid">
         <div className="glass-card connected-action">
-          <span className="muted-label">NEW BUDGET</span>
+          <span className="muted-label">
+            <Target size={13} /> NEW BUDGET
+          </span>
           <div className="connected-form-row">
             <input
               value={budgetName}
@@ -205,7 +242,9 @@ export function ConnectedFeaturePanel({
           </div>
         </div>
         <div className="glass-card connected-action">
-          <span className="muted-label">QUICK POLL</span>
+          <span className="muted-label">
+            <MessageSquare size={13} /> QUICK POLL
+          </span>
           <div className="connected-form-row">
             <input
               value={pollQuestion}
@@ -221,7 +260,9 @@ export function ConnectedFeaturePanel({
           </div>
         </div>
         <div className="glass-card connected-action">
-          <span className="muted-label">RECURRING EXPENSE</span>
+          <span className="muted-label">
+            <CalendarDays size={13} /> RECURRING EXPENSE
+          </span>
           <div className="connected-form-row">
             <input
               value={recurringTitle}
@@ -245,7 +286,9 @@ export function ConnectedFeaturePanel({
           <small>{recurring.length} scheduled in this group</small>
         </div>
         <div className="glass-card connected-action">
-          <span className="muted-label">GROUP EVENT</span>
+          <span className="muted-label">
+            <Sparkles size={13} /> GROUP EVENT
+          </span>
           <div className="connected-form-row">
             <input
               value={eventTitle}
@@ -264,8 +307,14 @@ export function ConnectedFeaturePanel({
           </small>
         </div>
       </div>
+
+      <div className="section-row quick-access-section-row">
+        <div>
+          <span className="muted-label">OPTIMIZED SETTLEMENTS</span>
+          <h2>Fewest payments to close the loop</h2>
+        </div>
+      </div>
       <div className="glass-card connected-action settlement-summary">
-        <span className="muted-label">OPTIMIZED SETTLEMENTS</span>
         {settlementPlan?.transfers.length ? (
           settlementPlan.transfers.map((transfer) => (
             <div

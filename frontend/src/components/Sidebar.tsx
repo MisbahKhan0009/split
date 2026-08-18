@@ -188,6 +188,12 @@ export function Sidebar({
           active={activeView === "activity"}
           onClick={() => onNavigate("activity")}
         />
+        <NavButton
+          icon={<Sparkles size={17} />}
+          label="Quick access"
+          active={activeView === "quick-access"}
+          onClick={() => onNavigate("quick-access")}
+        />
       </nav>
       <div className="sidebar-bottom">
         <button type="button" className="command-hint" onClick={onOpenPalette}>

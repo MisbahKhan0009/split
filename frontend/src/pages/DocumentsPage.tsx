@@ -1,4 +1,5 @@
-import { Download, FileText, Paperclip, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Download, ExternalLink, FileText, Paperclip, Sparkles } from "lucide-react";
 import type { Expense, Group } from "../types";
 import { money } from "../data/demoData";
 
@@ -50,24 +51,43 @@ export function DocumentsPage({
               <strong className="expense-amount">
                 {money(expense.amount)}
               </strong>
-              {expense.receiptUrl ? (
-                <a
-                  className="document-open"
-                  href={expense.receiptUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Open receipt"
-                >
-                  <Download size={15} />
-                </a>
-              ) : (
-                <span
-                  className="document-open disabled"
-                  title="Receipt unavailable"
-                >
-                  <Download size={15} />
-                </span>
-              )}
+              <div className="document-row-actions">
+                {expense.receiptUrl ? (
+                  <a
+                    className="document-open"
+                    href={expense.receiptUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="View receipt"
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+                ) : (
+                  <span
+                    className="document-open disabled"
+                    title="Receipt unavailable"
+                  >
+                    <ExternalLink size={15} />
+                  </span>
+                )}
+                {expense.receiptUrl ? (
+                  <a
+                    className="document-open"
+                    href={expense.receiptUrl}
+                    download
+                    title="Download receipt"
+                  >
+                    <Download size={15} />
+                  </a>
+                ) : (
+                  <span
+                    className="document-open disabled"
+                    title="Receipt unavailable"
+                  >
+                    <Download size={15} />
+                  </span>
+                )}
+              </div>
             </div>
           ))
         ) : (

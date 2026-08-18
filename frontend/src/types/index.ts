@@ -38,6 +38,8 @@ export interface Expense {
   amount: number;
   payer: string;
   date: string;
+  /** ISO YYYY-MM-DD, the real sortable/filterable expense date (occurred_on). */
+  occurredOn?: string;
   note: string;
   receipt?: boolean;
   receiptUrl?: string;
@@ -61,6 +63,8 @@ export interface ActivityItem {
   target: string;
   time: string;
   color: string;
+  /** Raw ISO timestamp (created_at), kept alongside the formatted `time` string. */
+  timestamp?: string;
 }
 
 export interface ChatAttachment {

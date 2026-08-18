@@ -4163,6 +4163,20 @@ h2 em {
   gap: 12px;
   margin-top: 15px;
 }
+.expense-two-col.expense-three-col {
+  grid-template-columns: 1fr 0.85fr 1.15fr;
+}
+@media (max-width: 560px) {
+  .expense-two-col.expense-three-col {
+    grid-template-columns: 1fr;
+  }
+}
+.expense-input-shell input[type="date"] {
+  color-scheme: dark;
+}
+.light .expense-input-shell input[type="date"] {
+  color-scheme: light;
+}
 .expense-section-label {
   display: flex;
   align-items: flex-end;
@@ -5808,9 +5822,6 @@ h2 em {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 34px;
-  padding-top: 30px;
-  border-top: 1px solid var(--line);
 }
 .connected-action-grid {
   display: grid;
@@ -5824,7 +5835,30 @@ h2 em {
   padding: 17px 18px;
 }
 .connected-action > .muted-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--lime);
+}
+.quick-access-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.quick-access-header h1 svg {
+  color: var(--lime);
+}
+.quick-access-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.quick-access-sync:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.quick-access-section-row {
+  margin: 6px 0 4px;
 }
 .connected-form-row {
   display: flex;
@@ -6073,21 +6107,188 @@ h2 em {
   }
 }
 
-/* Documents page: open/download link for a real uploaded receipt file */
+/* Documents page: view/download actions for a real uploaded receipt file */
+.document-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
 .document-open {
   display: grid;
   flex-shrink: 0;
   place-items: center;
   width: 32px;
   height: 32px;
-  margin-left: 8px;
+  border: 0;
   border-radius: 9px;
+  background: transparent;
   color: var(--lime);
 }
 .document-open:hover {
   background: var(--surface-soft);
 }
+.document-open:disabled,
 .document-open.disabled {
   color: var(--dim);
   cursor: not-allowed;
+}
+
+/* Document viewer modal: preview an image/PDF receipt inline with download options */
+.document-viewer-backdrop {
+  z-index: 40;
+}
+.document-viewer-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(84vh, 820px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+.document-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.document-viewer-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(183, 243, 107, 0.13);
+  color: var(--lime);
+}
+.document-viewer-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.document-viewer-title strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.document-viewer-title small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.document-viewer-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+.document-viewer-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.24);
+}
+.document-viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: min(76vh, 760px);
+  object-fit: contain;
+}
+.document-viewer-frame {
+  width: 100%;
+  height: min(76vh, 760px);
+  border: 0;
+  background: #fff;
+}
+.document-viewer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 60px 30px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.document-viewer-empty svg {
+  color: var(--dim);
+}
+@media (max-width: 640px) {
+  .document-viewer-modal {
+    max-height: 92vh;
+  }
+  .document-viewer-frame,
+  .document-viewer-image {
+    max-height: 60vh;
+  }
+}
+
+/* Shared pagination bar used across every list/table view */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px 16px;
+}
+.pagination-summary {
+  color: var(--muted);
+  font-size: 10px;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pagination-nav,
+.pagination-page {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+.pagination-nav:hover:not(:disabled),
+.pagination-page:hover {
+  border-color: rgba(183, 243, 107, 0.4);
+  color: var(--text);
+}
+.pagination-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.pagination-page.active {
+  border-color: rgba(183, 243, 107, 0.62);
+  background: rgba(183, 243, 107, 0.1);
+  color: var(--lime);
+}
+.pagination-ellipsis {
+  padding: 0 3px;
+  color: var(--dim);
+  font-size: 10px;
+}
+@media (max-width: 620px) {
+  .pagination-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

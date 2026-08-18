@@ -62,6 +62,8 @@ export function ExpenseModal({
   );
   const [payerMenuOpen, setPayerMenuOpen] = useState(false);
   const payerMenuRef = useRef<HTMLDivElement | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [occurredOn, setOccurredOn] = useState(todayIso);
   const [note, setNote] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
@@ -178,7 +180,11 @@ export function ExpenseModal({
             category,
             amount: parsedAmount,
             payer: payer.name,
-            date: "Just now",
+            date: new Date(`${occurredOn}T00:00:00`).toLocaleDateString(
+              "en-BD",
+              { day: "numeric", month: "short", year: "numeric" },
+            ),
+            occurredOn,
             note:
               note.trim() ||
               (mode === "Equal"
@@ -252,7 +258,7 @@ export function ExpenseModal({
                 />
               </div>
             </label>
-            <div className="expense-two-col">
+            <div className="expense-two-col expense-three-col">
               <label className="expense-field">
                 <span>Amount</span>
                 <div className="expense-input-shell amount-shell">
@@ -264,6 +270,19 @@ export function ExpenseModal({
                     }
                     inputMode="decimal"
                     placeholder="0.00"
+                  />
+                </div>
+              </label>
+              <label className="expense-field">
+                <span>Date</span>
+                <div className="expense-input-shell">
+                  <input
+                    type="date"
+                    value={occurredOn}
+                    max={todayIso}
+                    onChange={(event) =>
+                      setOccurredOn(event.target.value || todayIso)
+                    }
                   />
                 </div>
               </label>

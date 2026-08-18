@@ -988,6 +988,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             Expense.objects.filter(group__members=self.request.user)
             .select_related("payer")
             .prefetch_related("participants", "comments")
+            .order_by("-occurred_on", "-created_at")
         )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
@@ -1021,9 +1022,11 @@ class SettlementViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Settlement.objects.filter(
-            group__members=self.request.user
-        ).select_related("from_user", "to_user")
+        queryset = (
+            Settlement.objects.filter(group__members=self.request.user)
+            .select_related("from_user", "to_user")
+            .order_by("-created_at")
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -1148,7 +1151,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Budget.objects.filter(group__members=self.request.user)
+        queryset = Budget.objects.filter(group__members=self.request.user).order_by(
+            "-created_at"
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -1162,7 +1167,9 @@ class RecurringExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = RecurringExpense.objects.filter(group__members=self.request.user)
+        queryset = RecurringExpense.objects.filter(
+            group__members=self.request.user
+        ).order_by("-created_at")
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -1214,9 +1221,11 @@ class ActivityViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = ActivityEvent.objects.filter(
-            group__members=self.request.user
-        ).select_related("actor")
+        queryset = (
+            ActivityEvent.objects.filter(group__members=self.request.user)
+            .select_related("actor")
+            .order_by("-created_at")
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -1226,8 +1235,10 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).select_related(
-            "group"
+        return (
+            Notification.objects.filter(user=self.request.user)
+            .select_related("group")
+            .order_by("-created_at")
         )
 
     @action(detail=False, methods=["post"])
@@ -1241,9 +1252,11 @@ class PollViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Poll.objects.filter(
-            group__members=self.request.user
-        ).prefetch_related("options", "votes")
+        queryset = (
+            Poll.objects.filter(group__members=self.request.user)
+            .prefetch_related("options", "votes")
+            .order_by("-created_at")
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
@@ -1268,9 +1281,11 @@ class GroupEventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = GroupEvent.objects.filter(
-            group__members=self.request.user
-        ).prefetch_related("attendees")
+        queryset = (
+            GroupEvent.objects.filter(group__members=self.request.user)
+            .prefetch_related("attendees")
+            .order_by("-created_at")
+        )
         group_id = self.request.query_params.get("group")
         return queryset.filter(group_id=group_id) if group_id else queryset
 
