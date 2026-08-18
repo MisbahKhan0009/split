@@ -205,6 +205,7 @@ export type DirectoryUser = {
   last_name: string;
   display_name: string;
   initials: string;
+  avatar: string | null;
 };
 export type GroupInvitation = {
   id: number;
@@ -253,18 +254,72 @@ export function saveSession(payload: AuthResponse) {
   window.localStorage.setItem(ACCESS_TOKEN_KEY, payload.access);
   window.localStorage.setItem(REFRESH_TOKEN_KEY, payload.refresh);
 }
+export function getRefreshToken() {
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+}
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Exchange the stored refresh token for a fresh access token. Concurrent
+ * callers share one request so a burst of 401s triggers a single refresh.
+ */
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const refresh = getRefreshToken();
+  if (!refresh) return null;
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/token/refresh/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ refresh }),
+      });
+      if (!response.ok) {
+        clearSession();
+        return null;
+      }
+      const payload = (await response.json()) as {
+        access?: string;
+        refresh?: string;
+      };
+      if (!payload.access) {
+        clearSession();
+        return null;
+      }
+      window.localStorage.setItem(ACCESS_TOKEN_KEY, payload.access);
+      // ROTATE_REFRESH_TOKENS returns a replacement refresh token.
+      if (payload.refresh)
+        window.localStorage.setItem(REFRESH_TOKEN_KEY, payload.refresh);
+      return payload.access;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function send(path: string, init?: RequestInit, token?: string | null) {
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData))
     headers.set("Content-Type", "application/json");
-  const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${API_BASE}${path}`, {
+  return fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
     credentials: "include",
   });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response = await send(path, init, getAccessToken());
+  if (response.status === 401 && !path.startsWith("/auth/token")) {
+    const renewed = await refreshAccessToken();
+    if (renewed) response = await send(path, init, renewed);
+  }
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as
       ApiError | BackendValidationError | null;
@@ -437,9 +492,21 @@ export const api = {
   profile: () => request<ProfileDTO>("/profiles/me/"),
   accountActivity: () => request<AccountActivityItem[]>("/account/activity/"),
   accountSessions: () => request<AccountSession[]>("/account/sessions/"),
-  revokeCurrentSession: () => request<{ detail: string }>("/account/sessions/current/revoke/", { method: "POST", body: JSON.stringify({}) }),
-  revokeSession: (id: string) => request<{ detail: string }>(`/account/sessions/${id}/revoke/`, { method: "POST", body: JSON.stringify({}) }),
-  revokeAllSessions: () => request<{ detail: string; revoked_count: number }>("/account/sessions/revoke-all/", { method: "POST", body: JSON.stringify({}) }),
+  revokeCurrentSession: () =>
+    request<{ detail: string }>("/account/sessions/current/revoke/", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  revokeSession: (id: string) =>
+    request<{ detail: string }>(`/account/sessions/${id}/revoke/`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  revokeAllSessions: () =>
+    request<{ detail: string; revoked_count: number }>(
+      "/account/sessions/revoke-all/",
+      { method: "POST", body: JSON.stringify({}) },
+    ),
   updateProfile: (payload: ProfileUpdate) =>
     request<ProfileDTO>("/profiles/me/", {
       method: "PATCH",

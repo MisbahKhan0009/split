@@ -76,6 +76,7 @@ def log_activity(group, actor, action, target, metadata=None):
 class UserDirectorySerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
     initials = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -86,6 +87,7 @@ class UserDirectorySerializer(serializers.ModelSerializer):
             "last_name",
             "display_name",
             "initials",
+            "avatar",
         ]
 
     def get_display_name(self, obj):
@@ -93,6 +95,18 @@ class UserDirectorySerializer(serializers.ModelSerializer):
 
     def get_initials(self, obj):
         return "".join(part[0] for part in user_display(obj).split()[:2]).upper()
+
+    def get_avatar(self, obj):
+        # Reverse one-to-one raises an AttributeError subclass, so getattr default is safe.
+        profile = getattr(obj, "profile", None)
+        if not profile or not profile.avatar:
+            return None
+        request = self.context.get("request")
+        return (
+            request.build_absolute_uri(profile.avatar.url)
+            if request
+            else profile.avatar.url
+        )
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -695,6 +709,7 @@ class UserDirectoryViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = (
             User.objects.filter(is_active=True)
             .exclude(id=self.request.user.id)
+            .select_related("profile")
             .order_by("username")
         )
         search = self.request.query_params.get("search", "").strip()

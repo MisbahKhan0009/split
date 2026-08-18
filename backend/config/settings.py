@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -110,6 +111,19 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticatedOrReadOnly",
     ),
+}
+# Without this block SimpleJWT defaults to a 5-minute access token, which signed
+# users out on reload and silently broke background polling.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.getenv("DJANGO_ACCESS_TOKEN_MINUTES", "60"))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=int(os.getenv("DJANGO_REFRESH_TOKEN_DAYS", "14"))
+    ),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "UPDATE_LAST_LOGIN": True,
 }
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 MEDIA_URL = "/media/"

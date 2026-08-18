@@ -405,6 +405,11 @@ kbd {
 .page-header h1 span {
   color: var(--lime);
 }
+.page-header h2 {
+  margin: 8px 0 7px;
+  font: 600 clamp(22px, 2.4vw, 28px) "Space Grotesk";
+  letter-spacing: -0.05em;
+}
 .page-header p {
   margin: 0;
   color: var(--muted);
@@ -5428,5 +5433,410 @@ h2 em {
   }
   .session-revoke-button {
     margin-left: 41px;
+  }
+}
+
+/* Announcement banner for pending group invitations */
+.announcement-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 12px 44px 12px 14px;
+  border: 1px solid rgba(183, 243, 107, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(
+    120deg,
+    rgba(183, 243, 107, 0.14),
+    rgba(141, 216, 255, 0.08)
+  );
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  animation: banner-in 0.24s var(--ease);
+}
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.announcement-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--lime);
+  color: #172414;
+}
+.announcement-copy {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.announcement-copy strong {
+  color: var(--text);
+}
+.announcement-more {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lime);
+  font: 600 10px "DM Sans";
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.announcement-error {
+  display: block;
+  margin-top: 4px;
+  color: #ffb5c2;
+  font-size: 10px;
+}
+.announcement-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+}
+.announcement-join {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--lime);
+  color: #172414;
+  font: 600 10.5px "Space Grotesk";
+}
+.announcement-join:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+.announcement-decline {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 10.5px "DM Sans";
+}
+.announcement-decline:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(183, 243, 107, 0.4);
+}
+.announcement-join:disabled,
+.announcement-decline:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.announcement-close {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+.announcement-close:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  .announcement-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 12px 40px 12px 12px;
+  }
+  .announcement-actions {
+    width: 100%;
+    padding-left: 42px;
+  }
+}
+
+/* Invite modal: username suggestions and invitation rows.
+   Native <button> defaults render light grey, so these need explicit surfaces. */
+.invite-suggestions {
+  display: grid;
+  gap: 3px;
+  max-height: 210px;
+  margin-top: -4px;
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(12, 22, 34, 0.96);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+}
+.invite-suggestions button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.invite-suggestions button:hover {
+  background: var(--surface-soft);
+}
+.invite-suggestions button > span:nth-child(2) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.invite-suggestions strong {
+  font-size: 11px;
+}
+.invite-suggestions small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.invite-suggestions svg {
+  flex-shrink: 0;
+  color: var(--lime);
+}
+.invite-suggestions .avatar {
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.invite-list {
+  display: grid;
+  gap: 2px;
+  margin: 18px 0 6px;
+}
+.invite-list > .muted-label {
+  margin-bottom: 6px;
+}
+.invite-list > small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+.invite-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.invite-row-copy strong {
+  font-size: 11px;
+}
+.invite-row-copy small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.invite-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+.secondary-button.small {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 10px;
+}
+
+/* Notification overlay anchored under the topbar bell */
+.popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+}
+.notification-popover {
+  position: absolute;
+  z-index: 41;
+  top: 72px;
+  right: 38px;
+  display: grid;
+  gap: 3px;
+  width: min(330px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 120px));
+  padding: 8px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(12, 22, 34, 0.98);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+  animation: popover-in 0.16s var(--ease);
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.notification-popover .popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.popover-row {
+  display: grid;
+  gap: 3px;
+  padding: 9px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+}
+.popover-row:hover {
+  background: var(--surface-soft);
+}
+.popover-row small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.popover-invite {
+  display: grid;
+  gap: 8px;
+  padding: 10px 9px;
+  border-radius: 10px;
+  background: rgba(183, 243, 107, 0.08);
+  border: 1px solid rgba(183, 243, 107, 0.2);
+}
+.popover-invite-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.popover-invite-copy strong {
+  font-size: 11px;
+}
+.popover-invite-copy small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.popover-invite-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.popover-empty {
+  padding: 10px 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+@media (max-width: 720px) {
+  .notification-popover {
+    top: 66px;
+    right: 16px;
+  }
+}
+
+/* Group home "shared workspace" panel: action cards, inputs, and settlement list.
+   None of these had layout rules before, so inputs/buttons ran together on one line. */
+.connected-feature-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 34px;
+  padding-top: 30px;
+  border-top: 1px solid var(--line);
+}
+.connected-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.connected-action {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 17px 18px;
+}
+.connected-action > .muted-label {
+  color: var(--lime);
+}
+.connected-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.connected-form-row input {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+  color: var(--text);
+  font-size: 11px;
+  outline: 0;
+}
+.connected-form-row input::placeholder {
+  color: var(--dim);
+}
+.connected-form-row input:focus {
+  border-color: rgba(183, 243, 107, 0.55);
+  box-shadow: 0 0 0 3px rgba(183, 243, 107, 0.08);
+}
+.connected-form-row .primary-button,
+.connected-form-row .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.connected-action > small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.connected-action.settlement-summary {
+  gap: 4px;
+}
+.connected-action.settlement-summary .connected-list-row:first-of-type {
+  border-top: 0;
+}
+@media (max-width: 620px) {
+  .connected-form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .connected-form-row input,
+  .connected-form-row .primary-button,
+  .connected-form-row .secondary-button {
+    flex: 1 1 auto;
+    width: 100%;
+    justify-content: center;
   }
 }

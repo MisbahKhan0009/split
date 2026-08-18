@@ -248,6 +248,9 @@ function App() {
   const [invitations, setInvitations] = useState<
     import("./lib/api").GroupInvitation[]
   >([]);
+  const [dismissedInvitations, setDismissedInvitations] = useState<number[]>(
+    [],
+  );
   const [showGroupMenu, setShowGroupMenu] = useState(false);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [activity, setActivity] = useState(initialActivity);
@@ -298,7 +301,9 @@ function App() {
   const [userDashboard, setUserDashboard] = useState<
     import("./lib/api").UserDashboard | null
   >(null);
-  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>(null);
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>(
+    null,
+  );
   const [connectedPolls, setConnectedPolls] = useState<
     import("./lib/api").Poll[]
   >([]);
@@ -422,7 +427,9 @@ function App() {
     setShowAuth(false);
     notify("You have been signed out.");
   };
-  const updateProfile = async (payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>) => {
+  const updateProfile = async (
+    payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>,
+  ) => {
     const nextProfile = await api.updateProfile(payload);
     setProfile(nextProfile);
     setProfileImage(nextProfile.avatar ?? undefined);
@@ -449,10 +456,19 @@ function App() {
     setActiveView("overview");
     notify(`Switched to ${group.name}.`);
   };
-  const refreshInvitations = async () => {
+  // Notifications are account-wide, so they refresh independently of the active group.
+  const refreshNotifications = async () => {
+    try {
+      setConnectedNotifications(await api.notifications());
+    } catch {
+      /* background refresh stays silent */
+    }
+  };
+  const refreshInvitations = async (silent = false) => {
     try {
       setInvitations(await api.invitations());
     } catch (requestError) {
+      if (silent) return;
       notify(
         requestError instanceof Error
           ? requestError.message
@@ -524,6 +540,31 @@ function App() {
     notify(`Created ${group.name}.`);
   };
   const hasGroups = availableGroups.length > 0;
+  // Only invitations addressed to the signed-in user should be actionable.
+  const incomingInvitations = invitations.filter(
+    (item) => item.status === "pending" && item.invitee === authUser?.id,
+  );
+  const bannerInvitations = incomingInvitations.filter(
+    (item) => !dismissedInvitations.includes(item.id),
+  );
+  // Drives the bell indicator: unread notifications plus invitations awaiting a reply.
+  const alertCount =
+    connectedNotifications.filter((item) => !item.is_read).length +
+    incomingInvitations.length;
+  const acceptGroupInvitation = async (id: number) => {
+    await api.acceptInvitation(id);
+    await Promise.all([
+      refreshGroups(),
+      refreshInvitations(),
+      refreshDashboard(),
+    ]);
+    notify("Invitation accepted and membership updated.");
+  };
+  const declineGroupInvitation = async (id: number) => {
+    await api.declineInvitation(id);
+    await Promise.all([refreshInvitations(), refreshDashboard()]);
+    notify("Invitation declined.");
+  };
   const activeMessages =
     conversation.kind === "group"
       ? chat
@@ -606,6 +647,7 @@ function App() {
     Promise.all([
       refreshGroups(),
       refreshInvitations(),
+      refreshNotifications(),
       api.profile().then((nextProfile) => {
         setProfile(nextProfile);
         setProfileImage(nextProfile.avatar ?? undefined);
@@ -625,7 +667,10 @@ function App() {
   useEffect(() => {
     if (!authUser) return;
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refreshDashboard();
+      if (document.visibilityState !== "visible") return;
+      void refreshDashboard();
+      void refreshInvitations(true);
+      void refreshNotifications();
     };
     const interval = window.setInterval(refreshWhenVisible, 10000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
@@ -1077,19 +1122,34 @@ function App() {
             void updateProfile({ theme: nextTheme });
           }}
           theme={theme}
+          alertCount={alertCount}
         />
         {showNotifications && (
           <Notifications
             notifications={connectedNotifications}
-            invitations={invitations}
+            invitations={incomingInvitations}
             onClose={() => setShowNotifications(false)}
             onAction={(message) => {
               setShowNotifications(false);
               notify(message);
             }}
+            onAccept={acceptGroupInvitation}
+            onDecline={declineGroupInvitation}
           />
         )}
         <div className="page-content">
+          {bannerInvitations.length > 0 && (
+            <AnnouncementBanner
+              invitation={bannerInvitations[0]}
+              extraCount={bannerInvitations.length - 1}
+              onAccept={acceptGroupInvitation}
+              onDecline={declineGroupInvitation}
+              onDismiss={(id) =>
+                setDismissedInvitations((current) => [...current, id])
+              }
+              onViewAll={() => setShowNotifications(true)}
+            />
+          )}
           {activeView === "settings" && authUser && (
             <SettingsPage
               authUser={authUser}
@@ -1251,46 +1311,21 @@ function App() {
         <InviteModal
           group={activeGroup}
           invitations={invitations}
+          currentUserId={authUser?.id ?? 0}
           onClose={() => setShowInvite(false)}
           onInvite={async (username) => {
-            const result = await api.createInvitation({
+            await api.createInvitation({
               group: Number(activeGroup.id),
               username,
             });
             await refreshInvitations();
-            notify(`Invitation sent to ${result.invitee_username}.`);
           }}
-          onAccept={async (id) => {
-            await api.acceptInvitation(id);
-            await refreshGroups();
-            await refreshInvitations();
-            await refreshDashboard();
-            notify("Invitation accepted and membership updated.");
-          }}
-          onDecline={async (id) => {
-            await api.declineInvitation(id);
-            await refreshInvitations();
-            notify("Invitation declined.");
-          }}
+          onAccept={acceptGroupInvitation}
+          onDecline={declineGroupInvitation}
+          onToast={notify}
         />
       )}
-      {showNotifications && (
-        <InvitationInbox
-          invitations={invitations}
-          onAccept={async (id) => {
-            await api.acceptInvitation(id);
-            await refreshGroups();
-            await refreshInvitations();
-            await refreshDashboard();
-            notify("Invitation accepted and membership updated.");
-          }}
-          onDecline={async (id) => {
-            await api.declineInvitation(id);
-            await refreshInvitations();
-            notify("Invitation declined.");
-          }}
-        />
-      )}
+
       {showPalette && (
         <CommandPalette
           onClose={() => setShowPalette(false)}
@@ -1304,34 +1339,34 @@ function App() {
       {showProfile &&
         showProfile.id !== String(authUser?.id) &&
         showProfile.id !== "me" && (
-        <ProfileDrawer
-          member={showProfile}
-          isSelf={
-            showProfile.id === String(authUser?.id) || showProfile.id === "me"
-          }
-          avatarUrl={
-            showProfile.id === String(authUser?.id) ||
-            showProfile.id === currentMember.id
-              ? profileImage
-              : showProfile.profile.avatarUrl
-          }
-          onClose={() => setShowProfile(null)}
-          onMessage={() => {
-            if (
-              showProfile.id !== String(authUser?.id) &&
-              showProfile.id !== "me"
-            ) {
-              openDirect(showProfile);
+          <ProfileDrawer
+            member={showProfile}
+            isSelf={
+              showProfile.id === String(authUser?.id) || showProfile.id === "me"
             }
-            setShowProfile(null);
-            navigate("chat");
-          }}
-          onAvatarChange={(url) => {
-            setProfileImage(url);
-            notify("Profile picture updated");
-          }}
-        />
-      )}
+            avatarUrl={
+              showProfile.id === String(authUser?.id) ||
+              showProfile.id === currentMember.id
+                ? profileImage
+                : showProfile.profile.avatarUrl
+            }
+            onClose={() => setShowProfile(null)}
+            onMessage={() => {
+              if (
+                showProfile.id !== String(authUser?.id) &&
+                showProfile.id !== "me"
+              ) {
+                openDirect(showProfile);
+              }
+              setShowProfile(null);
+              navigate("chat");
+            }}
+            onAvatarChange={(url) => {
+              setProfileImage(url);
+              notify("Profile picture updated");
+            }}
+          />
+        )}
       {toast && (
         <div className="toast">
           <Check size={16} /> {toast}
@@ -1394,12 +1429,14 @@ function UserDashboardView({
             Your personal view of shared money, balances, and group activity.
           </p>
           <small className="dashboard-sync-status">
-            <span className="live-dot" /> Backend synced {dashboardUpdatedAt
+            <span className="live-dot" /> Backend synced{" "}
+            {dashboardUpdatedAt
               ? dashboardUpdatedAt.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
-              : "just now"} · refreshes every 10s
+              : "just now"}{" "}
+            · refreshes every 10s
           </small>
         </div>
         <button
@@ -1884,7 +1921,7 @@ function ConnectedFeaturePanel({
           </small>
         </div>
       </div>
-      <div className="glass-card connected-action">
+      <div className="glass-card connected-action settlement-summary">
         <span className="muted-label">OPTIMIZED SETTLEMENTS</span>
         {settlementPlan?.transfers.length ? (
           settlementPlan.transfers.map((transfer) => (
@@ -2657,8 +2694,12 @@ function SettingsPage({
   const [status, setStatus] = useState(profile?.status ?? "Available");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [activityItems, setActivityItems] = useState<import("./lib/api").AccountActivityItem[]>([]);
-  const [sessions, setSessions] = useState<import("./lib/api").AccountSession[]>([]);
+  const [activityItems, setActivityItems] = useState<
+    import("./lib/api").AccountActivityItem[]
+  >([]);
+  const [sessions, setSessions] = useState<
+    import("./lib/api").AccountSession[]
+  >([]);
   const [accountDataLoading, setAccountDataLoading] = useState(true);
   const [accountDataError, setAccountDataError] = useState("");
   const [sessionAction, setSessionAction] = useState("");
@@ -2712,7 +2753,11 @@ function SettingsPage({
       await api.revokeSession(sessionId);
       await loadAccountData();
     } catch (requestError) {
-      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke this session.");
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not revoke this session.",
+      );
     } finally {
       setSessionAction("");
     }
@@ -2724,7 +2769,11 @@ function SettingsPage({
       await api.revokeAllSessions();
       await loadAccountData();
     } catch (requestError) {
-      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke other sessions.");
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not revoke other sessions.",
+      );
     } finally {
       setSessionAction("");
     }
@@ -2734,7 +2783,10 @@ function SettingsPage({
     event.preventDefault();
     setBusy(true);
     try {
-      await onProfileSaved({ bio: bio.trim(), status: status.trim() || "Available" });
+      await onProfileSaved({
+        bio: bio.trim(),
+        status: status.trim() || "Available",
+      });
     } catch (requestError) {
       window.alert(
         requestError instanceof Error
@@ -2867,7 +2919,8 @@ function SettingsPage({
               <Palette size={18} />
             </div>
             <p className="settings-description">
-              Choose the workspace appearance used across your signed-in sessions.
+              Choose the workspace appearance used across your signed-in
+              sessions.
             </p>
             <div className="theme-options">
               {(["dark", "light"] as const).map((option) => (
@@ -2879,8 +2932,12 @@ function SettingsPage({
                 >
                   <span className={`theme-preview ${option}`} />
                   <span>
-                    <strong>{option === "dark" ? "Dark glass" : "Light glass"}</strong>
-                    <small>{theme === option ? "Active" : "Use this theme"}</small>
+                    <strong>
+                      {option === "dark" ? "Dark glass" : "Light glass"}
+                    </strong>
+                    <small>
+                      {theme === option ? "Active" : "Use this theme"}
+                    </small>
                   </span>
                   {theme === option && <Check size={15} />}
                 </button>
@@ -2893,31 +2950,58 @@ function SettingsPage({
                 <span className="muted-label">SECURITY</span>
                 <h2>Active sessions</h2>
               </div>
-              <button type="button" className="icon-button" onClick={() => void loadAccountData()} title="Refresh sessions">
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => void loadAccountData()}
+                title="Refresh sessions"
+              >
                 <Activity size={16} />
               </button>
             </div>
-            <p className="settings-description">Review where your account is signed in and revoke anything unfamiliar.</p>
-            {accountDataError && <p className="settings-inline-error">{accountDataError}</p>}
+            <p className="settings-description">
+              Review where your account is signed in and revoke anything
+              unfamiliar.
+            </p>
+            {accountDataError && (
+              <p className="settings-inline-error">{accountDataError}</p>
+            )}
             {accountDataLoading ? (
               <p className="settings-empty-state">Loading active sessions…</p>
             ) : sessions.length ? (
               <div className="session-list">
                 {sessions.map((session) => (
                   <div className="session-row" key={session.id}>
-                    <div className="session-icon"><UserRound size={16} /></div>
+                    <div className="session-icon">
+                      <UserRound size={16} />
+                    </div>
                     <div className="session-copy">
-                      <strong>{session.device_label}{session.is_current ? " · This device" : ""}</strong>
-                      <small>Last active {new Date(session.last_seen_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                      <strong>
+                        {session.device_label}
+                        {session.is_current ? " · This device" : ""}
+                      </strong>
+                      <small>
+                        Last active{" "}
+                        {new Date(session.last_seen_at).toLocaleString(
+                          "en-BD",
+                          { dateStyle: "medium", timeStyle: "short" },
+                        )}
+                      </small>
                       <small>{session.ip_address || "IP unavailable"}</small>
                     </div>
                     <button
                       type="button"
                       className="text-button session-revoke-button"
                       disabled={sessionAction === session.id}
-                      onClick={() => void revokeSession(session.id, session.is_current)}
+                      onClick={() =>
+                        void revokeSession(session.id, session.is_current)
+                      }
                     >
-                      {sessionAction === session.id ? "Revoking…" : session.is_current ? "Sign out" : "Revoke"}
+                      {sessionAction === session.id
+                        ? "Revoking…"
+                        : session.is_current
+                          ? "Sign out"
+                          : "Revoke"}
                     </button>
                   </div>
                 ))}
@@ -2926,8 +3010,15 @@ function SettingsPage({
               <p className="settings-empty-state">No active sessions found.</p>
             )}
             {sessions.some((session) => !session.is_current) && (
-              <button type="button" className="outline-button settings-wide-button" disabled={sessionAction === "all"} onClick={() => void revokeOtherSessions()}>
-                {sessionAction === "all" ? "Revoking…" : "Revoke all other sessions"}
+              <button
+                type="button"
+                className="outline-button settings-wide-button"
+                disabled={sessionAction === "all"}
+                onClick={() => void revokeOtherSessions()}
+              >
+                {sessionAction === "all"
+                  ? "Revoking…"
+                  : "Revoke all other sessions"}
               </button>
             )}
           </div>
@@ -2939,10 +3030,21 @@ function SettingsPage({
               </div>
               <UserRound size={18} />
             </div>
-            <div className="settings-detail-row"><span>Name</span><strong>{authUser.display_name}</strong></div>
-            <div className="settings-detail-row"><span>Username</span><strong>@{authUser.username}</strong></div>
-            <div className="settings-detail-row"><span>Email</span><strong>{authUser.email || "Not added"}</strong></div>
-            <p className="settings-description">Your account identity is managed through the secure sign-in flow.</p>
+            <div className="settings-detail-row">
+              <span>Name</span>
+              <strong>{authUser.display_name}</strong>
+            </div>
+            <div className="settings-detail-row">
+              <span>Username</span>
+              <strong>@{authUser.username}</strong>
+            </div>
+            <div className="settings-detail-row">
+              <span>Email</span>
+              <strong>{authUser.email || "Not added"}</strong>
+            </div>
+            <p className="settings-description">
+              Your account identity is managed through the secure sign-in flow.
+            </p>
           </div>
           <div className="glass-card settings-card account-details-card">
             <div className="section-heading">
@@ -2952,7 +3054,10 @@ function SettingsPage({
               </div>
               <Activity size={18} />
             </div>
-            <p className="settings-description">A private record of sign-ins, profile changes, and session actions.</p>
+            <p className="settings-description">
+              A private record of sign-ins, profile changes, and session
+              actions.
+            </p>
             {accountDataLoading ? (
               <p className="settings-empty-state">Loading activity…</p>
             ) : activityItems.length ? (
@@ -2962,22 +3067,36 @@ function SettingsPage({
                     <span className="activity-log-dot" />
                     <div>
                       <strong>{item.description}</strong>
-                      <small>{item.device_label} · {new Date(item.created_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                      <small>
+                        {item.device_label} ·{" "}
+                        {new Date(item.created_at).toLocaleString("en-BD", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </small>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="settings-empty-state">No account activity has been recorded yet.</p>
+              <p className="settings-empty-state">
+                No account activity has been recorded yet.
+              </p>
             )}
           </div>
           <div className="glass-card settings-card danger-card">
             <div>
               <span className="muted-label">SESSION</span>
               <h2>Sign out everywhere</h2>
-              <p className="settings-description">End this browser session and return to the public landing page.</p>
+              <p className="settings-description">
+                End this browser session and return to the public landing page.
+              </p>
             </div>
-            <button type="button" className="outline-button danger-button" onClick={onSignOut}>
+            <button
+              type="button"
+              className="outline-button danger-button"
+              onClick={onSignOut}
+            >
               <LogIn size={15} /> Sign out
             </button>
           </div>
@@ -3280,24 +3399,27 @@ function GroupCreateModal({
 function InviteModal({
   group,
   invitations,
+  currentUserId,
   onClose,
   onInvite,
   onAccept,
   onDecline,
+  onToast,
 }: {
   group: Group;
   invitations: import("./lib/api").GroupInvitation[];
+  currentUserId: number;
   onClose: () => void;
   onInvite: (username: string) => Promise<void>;
   onAccept: (id: number) => Promise<void>;
   onDecline: (id: number) => Promise<void>;
+  onToast: (message: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState<
     import("./lib/api").DirectoryUser[]
   >([]);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   useEffect(() => {
     if (!search.trim()) {
       setSuggestions([]);
@@ -3313,14 +3435,13 @@ function InviteModal({
   }, [search]);
   const invite = async (username: string) => {
     setBusy(true);
-    setMessage("");
     try {
       await onInvite(username);
       setSearch("");
       setSuggestions([]);
-      setMessage(`Invitation sent to @${username}.`);
+      onToast(`Invitation sent to @${username}.`);
     } catch (requestError) {
-      setMessage(
+      onToast(
         requestError instanceof Error
           ? requestError.message
           : "Could not send invitation.",
@@ -3333,13 +3454,10 @@ function InviteModal({
     await navigator.clipboard?.writeText(
       `${window.location.origin}/?invite=${token}`,
     );
-    setMessage(
+    onToast(
       "Invitation link copied. The invited user must sign in as the matching username.",
     );
   };
-  const received = invitations.filter(
-    (item) => item.invitee_username && item.status === "pending",
-  );
   return (
     <div className="auth-backdrop" onClick={onClose}>
       <section
@@ -3371,7 +3489,11 @@ function InviteModal({
           <div className="invite-suggestions">
             {suggestions.map((user) => (
               <button key={user.id} onClick={() => void invite(user.username)}>
-                <span className="avatar avatar-sm">{user.initials}</span>
+                <Avatar
+                  member={{ initials: user.initials, color: "#8dd8ff" }}
+                  size="sm"
+                  avatarUrl={user.avatar ?? undefined}
+                />
                 <span>
                   <strong>{user.display_name}</strong>
                   <small>@{user.username}</small>
@@ -3381,49 +3503,52 @@ function InviteModal({
             ))}
           </div>
         )}
-        {message && (
-          <div className="auth-footnote">
-            <Check size={13} /> {message}
-          </div>
-        )}
         <div className="invite-list">
           <span className="muted-label">YOUR INVITATIONS</span>
           {invitations.length === 0 && <small>No invitations yet.</small>}
-          {invitations.map((item) => (
-            <div className="invite-row" key={item.id}>
-              <span>
-                <strong>{item.group_name}</strong>
-                <small>
-                  {item.inviter_name} → @{item.invitee_username} · {item.status}
-                </small>
-              </span>
-              {item.status === "pending" && item.invitee_username && (
-                <span>
-                  <button
-                    className="secondary-button small"
-                    onClick={() => void onAccept(item.id)}
-                  >
-                    Accept
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => void onDecline(item.id)}
-                  >
-                    Decline
-                  </button>
+          {invitations.map((item) => {
+            // Only the invited account can respond; the sender gets the share link.
+            const isRecipient = item.invitee === currentUserId;
+            return (
+              <div className="invite-row" key={item.id}>
+                <span className="invite-row-copy">
+                  <strong>{item.group_name}</strong>
+                  <small>
+                    {isRecipient
+                      ? `${item.inviter_name} invited you`
+                      : `You invited @${item.invitee_username}`}
+                    {" · "}
+                    {item.status}
+                  </small>
                 </span>
-              )}
-              {item.status === "pending" && (
-                <button
-                  className="icon-button"
-                  onClick={() => void copyLink(item.token)}
-                  title="Copy invitation link"
-                >
-                  <Copy size={15} />
-                </button>
-              )}
-            </div>
-          ))}
+                {item.status === "pending" &&
+                  (isRecipient ? (
+                    <span className="invite-row-actions">
+                      <button
+                        className="secondary-button small"
+                        onClick={() => void onAccept(item.id)}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className="text-button"
+                        onClick={() => void onDecline(item.id)}
+                      >
+                        Decline
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      className="icon-button"
+                      onClick={() => void copyLink(item.token)}
+                      title="Copy invitation link"
+                    >
+                      <Copy size={15} />
+                    </button>
+                  ))}
+              </div>
+            );
+          })}
         </div>
         <button className="secondary-button" onClick={onClose}>
           Done
@@ -3433,44 +3558,83 @@ function InviteModal({
   );
 }
 
-function InvitationInbox({
-  invitations,
+function AnnouncementBanner({
+  invitation,
+  extraCount,
   onAccept,
   onDecline,
+  onDismiss,
+  onViewAll,
 }: {
-  invitations: import("./lib/api").GroupInvitation[];
+  invitation: import("./lib/api").GroupInvitation;
+  extraCount: number;
   onAccept: (id: number) => Promise<void>;
   onDecline: (id: number) => Promise<void>;
+  onDismiss: (id: number) => void;
+  onViewAll: () => void;
 }) {
-  const pending = invitations.filter((item) => item.status === "pending");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "That invitation action could not be completed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <div className="notification-popover">
-      <div>
-        <span className="muted-label">INVITATION INBOX</span>
+    <div className="announcement-banner" role="status">
+      <span className="announcement-icon">
+        <Users size={15} />
+      </span>
+      <p className="announcement-copy">
+        <strong>{invitation.inviter_name}</strong> invited you to join{" "}
+        <strong>{invitation.group_name}</strong>.
+        {extraCount > 0 && (
+          <button
+            type="button"
+            className="announcement-more"
+            onClick={onViewAll}
+          >
+            +{extraCount} more invitation{extraCount > 1 ? "s" : ""}
+          </button>
+        )}
+        {error && <small className="announcement-error">{error}</small>}
+      </p>
+      <div className="announcement-actions">
+        <button
+          type="button"
+          className="announcement-join"
+          disabled={busy}
+          onClick={() => void run(() => onAccept(invitation.id))}
+        >
+          {busy ? "Working…" : "Join group"} <ArrowUpRight size={14} />
+        </button>
+        <button
+          type="button"
+          className="announcement-decline"
+          disabled={busy}
+          onClick={() => void run(() => onDecline(invitation.id))}
+        >
+          Decline
+        </button>
       </div>
-      {pending.length === 0 && <small>No pending group invitations.</small>}
-      {pending.map((item) => (
-        <div className="invite-row" key={item.id}>
-          <span>
-            <strong>{item.group_name}</strong>
-            <small>{item.inviter_name} invited you</small>
-          </span>
-          <span>
-            <button
-              className="secondary-button small"
-              onClick={() => void onAccept(item.id)}
-            >
-              Join
-            </button>
-            <button
-              className="text-button"
-              onClick={() => void onDecline(item.id)}
-            >
-              Decline
-            </button>
-          </span>
-        </div>
-      ))}
+      <button
+        type="button"
+        className="announcement-close"
+        onClick={() => onDismiss(invitation.id)}
+        aria-label="Dismiss announcement"
+      >
+        <X size={15} />
+      </button>
     </div>
   );
 }
@@ -3520,6 +3684,7 @@ function Topbar({
   onNotifications,
   onTheme,
   theme,
+  alertCount,
 }: {
   activeGroup: Group;
   query: string;
@@ -3528,6 +3693,7 @@ function Topbar({
   onNotifications: () => void;
   onTheme: () => void;
   theme: string;
+  alertCount: number;
 }) {
   return (
     <header className="topbar">
@@ -3556,10 +3722,14 @@ function Topbar({
         <button
           className="icon-button notification-button"
           onClick={onNotifications}
-          aria-label="Open notifications"
+          aria-label={
+            alertCount > 0
+              ? `Open notifications, ${alertCount} unread`
+              : "Open notifications"
+          }
         >
           <Bell size={17} />
-          <i />
+          {alertCount > 0 && <i />}
         </button>
         {activeGroup.id !== "none" && (
           <button className="invite-button" onClick={onOpenInvite}>
@@ -5415,41 +5585,74 @@ function Notifications({
   invitations,
   onClose,
   onAction,
+  onAccept,
+  onDecline,
 }: {
   notifications: import("./lib/api").NotificationItem[];
   invitations: import("./lib/api").GroupInvitation[];
   onClose: () => void;
   onAction: (message: string) => void;
+  onAccept: (id: number) => Promise<void>;
+  onDecline: (id: number) => Promise<void>;
 }) {
   const pending = invitations.filter((item) => item.status === "pending");
   return (
-    <div className="notification-popover">
-      <div>
-        <span className="muted-label">NOTIFICATIONS</span>
-        <button className="icon-button" onClick={onClose}>
-          <X size={15} />
-        </button>
+    <>
+      <div className="popover-backdrop" onClick={onClose} />
+      <div
+        className="notification-popover"
+        role="dialog"
+        aria-label="Notifications"
+      >
+        <div className="popover-heading">
+          <span className="muted-label">NOTIFICATIONS</span>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close notifications"
+          >
+            <X size={15} />
+          </button>
+        </div>
+        {pending.map((item) => (
+          <div className="popover-invite" key={`invite-${item.id}`}>
+            <span className="popover-invite-copy">
+              <strong>{item.group_name}</strong>
+              <small>{item.inviter_name} invited you</small>
+            </span>
+            <span className="popover-invite-actions">
+              <button
+                className="secondary-button small"
+                onClick={() => void onAccept(item.id)}
+              >
+                Join
+              </button>
+              <button
+                className="text-button"
+                onClick={() => void onDecline(item.id)}
+              >
+                Decline
+              </button>
+            </span>
+          </div>
+        ))}
+        {notifications.map((item) => (
+          <button
+            className="popover-row"
+            key={item.id}
+            onClick={() => onAction(item.title)}
+          >
+            {item.title}
+            <small>{item.body}</small>
+          </button>
+        ))}
+        {pending.length === 0 && notifications.length === 0 && (
+          <small className="popover-empty">
+            No new notifications or invitations.
+          </small>
+        )}
       </div>
-      {pending.map((item) => (
-        <button
-          key={`invite-${item.id}`}
-          onClick={() =>
-            onAction(`Invitation from ${item.group_name} is ready to review.`)
-          }
-        >
-          {item.group_name} invitation <small>{item.inviter_name}</small>
-        </button>
-      ))}
-      {notifications.map((item) => (
-        <button key={item.id} onClick={() => onAction(item.title)}>
-          {item.title}
-          <small>{item.body}</small>
-        </button>
-      ))}
-      {pending.length === 0 && notifications.length === 0 && (
-        <small>No new notifications or invitations.</small>
-      )}
-    </div>
+    </>
   );
 }
 function ExpenseModal({
