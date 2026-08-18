@@ -40,9 +40,7 @@ export function PaymentModal({
         setState("success");
         setTimeout(onClose, 2000);
       } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Payment failed.",
-        );
+        setErrorMessage(err instanceof Error ? err.message : "Payment failed.");
         setState("error");
       }
     }, 1500);
@@ -50,9 +48,14 @@ export function PaymentModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="payment-modal glass-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="payment-modal glass-card"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="payment-modal-header">
-          <h2>Pay {money(amount)} to {toName}</h2>
+          <h2>
+            Pay {money(amount)} to {toName}
+          </h2>
           <button className="icon-button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -86,7 +89,10 @@ export function PaymentModal({
         {state === "processing" && (
           <div className="payment-processing">
             <div className="payment-spinner" />
-            <p>Processing payment via {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label}…</p>
+            <p>
+              Processing payment via{" "}
+              {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label}…
+            </p>
           </div>
         )}
 
@@ -103,7 +109,10 @@ export function PaymentModal({
         {state === "error" && (
           <div className="payment-processing">
             <p className="error-text">{errorMessage}</p>
-            <button className="secondary-button" onClick={() => setState("idle")}>
+            <button
+              className="secondary-button"
+              onClick={() => setState("idle")}
+            >
               Try again
             </button>
           </div>

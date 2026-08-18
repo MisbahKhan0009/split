@@ -5268,7 +5268,23 @@ h2 em {
 .settings-card .field-label textarea {
   width: 100%;
   margin-top: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+  color: var(--text);
+  font: 500 11px "DM Sans";
+  outline: 0;
   box-sizing: border-box;
+}
+.settings-card .field-label input:focus,
+.settings-card .field-label textarea:focus {
+  border-color: rgba(183, 243, 107, 0.55);
+  box-shadow: 0 0 0 3px rgba(183, 243, 107, 0.08);
+}
+.settings-card .field-label textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 .settings-form-footer {
   display: flex;
@@ -6291,4 +6307,316 @@ h2 em {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ─── Settle page (functional rewrite) ─── */
+.settle-request-panel {
+  margin-bottom: 18px;
+  padding: 21px;
+}
+.settle-request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+.settle-request-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settle-request-row:last-child {
+  border-bottom: none;
+}
+.settle-request-names {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  font-size: 12px;
+}
+.settle-request-row > b {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.settle-request-row .primary-button {
+  padding: 7px 13px;
+  font-size: 10px;
+}
+.settle-review-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 11px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settle-review-card:last-child {
+  border-bottom: none;
+}
+.settle-review-card.completed {
+  opacity: 0.8;
+}
+.settle-review-info {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+}
+.settle-review-info > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.settle-review-info > span:last-child small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.settle-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.settle-status-badge.pending {
+  background: rgba(247, 191, 109, 0.12);
+  color: #f7bf6d;
+}
+.settle-status-badge.confirmed {
+  background: rgba(183, 243, 107, 0.12);
+  color: var(--lime);
+}
+.settle-completed-section {
+  margin-top: 18px;
+}
+
+/* ─── Payment Modal ─── */
+.payment-modal {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px;
+  border-radius: 16px;
+  animation: fadeInUp 0.2s ease-out;
+}
+.payment-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.payment-modal-header h2 {
+  font: 600 17px "Space Grotesk";
+  letter-spacing: -0.04em;
+}
+.payment-method-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0 22px;
+}
+.payment-method-option {
+  padding: 14px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.payment-method-option:hover {
+  border-color: var(--lime);
+}
+.payment-method-option.selected {
+  border-color: var(--lime);
+  background: rgba(183, 243, 107, 0.08);
+  color: var(--lime);
+}
+.payment-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.payment-processing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 0;
+  text-align: center;
+}
+.payment-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--line);
+  border-top-color: var(--lime);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.payment-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 0;
+  text-align: center;
+}
+.payment-success-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(183, 243, 107, 0.15);
+  color: var(--lime);
+}
+.payment-success h3 {
+  font: 600 15px "Space Grotesk";
+}
+.error-text {
+  color: #ff6b6b;
+  font-size: 12px;
+}
+
+/* Plan page: form card, form grid, poll options, recurring list */
+.plan-form-card {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.plan-form-card .card-heading {
+  margin-bottom: 16px;
+}
+.connected-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.connected-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.connected-form-grid input,
+.connected-form-grid select,
+.connected-form-grid textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.16);
+  color: var(--text);
+  font: 500 11px "DM Sans";
+  outline: 0;
+}
+.connected-form-grid textarea {
+  padding: 9px 11px;
+  resize: vertical;
+}
+.connected-form-grid input:focus,
+.connected-form-grid select:focus,
+.connected-form-grid textarea:focus {
+  border-color: rgba(183, 243, 107, 0.55);
+  box-shadow: 0 0 0 3px rgba(183, 243, 107, 0.08);
+}
+.connected-form-grid input[type="datetime-local"],
+.connected-form-grid input[type="date"] {
+  color-scheme: dark;
+}
+.light .connected-form-grid input[type="datetime-local"],
+.light .connected-form-grid input[type="date"] {
+  color-scheme: light;
+}
+.connected-form-grid select {
+  appearance: none;
+  cursor: pointer;
+}
+.connected-form-grid select option {
+  background: #0f1a24;
+  color: var(--text);
+}
+.connected-form-grid .primary-button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+@media (max-width: 620px) {
+  .connected-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Poll options */
+.plan-poll {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.plan-poll:last-child {
+  border-bottom: 0;
+}
+.poll-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-left: 40px;
+}
+.poll-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+}
+.poll-option:hover:not(:disabled) {
+  border-color: rgba(183, 243, 107, 0.45);
+  background: rgba(183, 243, 107, 0.06);
+}
+.poll-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.poll-option b {
+  flex-shrink: 0;
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(183, 243, 107, 0.12);
+  color: var(--lime);
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Recurring list section */
+.recurring-list {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.recurring-list .task-person:first-child {
+  border-top: 0;
 }

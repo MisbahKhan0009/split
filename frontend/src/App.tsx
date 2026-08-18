@@ -577,9 +577,7 @@ function App() {
       api.budgets(groupId).then(setConnectedBudgets),
       api.notifications().then(setConnectedNotifications),
       api.settlementPlan(groupId).then(setConnectedSettlementPlan),
-      api
-        .settlements(groupId)
-        .then(setConnectedSettlements),
+      api.settlements(groupId).then(setConnectedSettlements),
       api.recurringExpenses(groupId).then(setConnectedRecurring),
       api.events(groupId).then(setConnectedEvents),
       api.polls(groupId).then(setConnectedPolls),
@@ -1041,9 +1039,7 @@ function App() {
               settlements={connectedSettlements}
               currentUserId={authUser?.id ?? 0}
               isGroupOwner={
-                (
-                  activeGroup.members_detail ?? []
-                ).findIndex(
+                (activeGroup.members_detail ?? []).findIndex(
                   (m) =>
                     (m as import("./lib/api").GroupMemberDTO).user_id ===
                       authUser?.id &&

@@ -33,14 +33,16 @@ export function SettlePage({
     amount: number,
     note?: string,
   ) => Promise<void>;
-  onPaySettlement: (settlementId: number, paymentMethod: string) => Promise<void>;
+  onPaySettlement: (
+    settlementId: number,
+    paymentMethod: string,
+  ) => Promise<void>;
   onSync: () => Promise<void>;
   onToast: (message: string) => void;
 }) {
   const [showRequestPanel, setShowRequestPanel] = useState(false);
-  const [payingSettlement, setPayingSettlement] = useState<SettlementDTO | null>(
-    null,
-  );
+  const [payingSettlement, setPayingSettlement] =
+    useState<SettlementDTO | null>(null);
   const [requestingIndex, setRequestingIndex] = useState<number | null>(null);
 
   const transfers = settlementPlan?.transfers ?? [];
@@ -61,10 +63,7 @@ export function SettlePage({
   );
   const completed = settlements.filter((s) => s.status === "confirmed");
 
-  const totalToSettle = transfers.reduce(
-    (sum, t) => sum + Number(t.amount),
-    0,
-  );
+  const totalToSettle = transfers.reduce((sum, t) => sum + Number(t.amount), 0);
 
   const handleRequest = async (
     fromUser: number,
@@ -150,7 +149,10 @@ export function SettlePage({
                   key={`${transfer.from_user}-${transfer.to_user}`}
                   className="settle-request-row"
                 >
-                  <span className="transfer-avatar" style={{ background: "#8dd8ff" }}>
+                  <span
+                    className="transfer-avatar"
+                    style={{ background: "#8dd8ff" }}
+                  >
                     {transfer.from_name.slice(0, 1)}
                   </span>
                   <span className="settle-request-names">
@@ -197,11 +199,15 @@ export function SettlePage({
             readyToReview.map((s) => (
               <div key={s.id} className="settle-review-card">
                 <div className="settle-review-info">
-                  <span className="transfer-avatar" style={{ background: "#ffb1d5" }}>
+                  <span
+                    className="transfer-avatar"
+                    style={{ background: "#ffb1d5" }}
+                  >
                     {s.to_name.slice(0, 1)}
                   </span>
                   <span>
-                    <strong>{s.to_name}</strong> requested {money(Number(s.amount))}
+                    <strong>{s.to_name}</strong> requested{" "}
+                    {money(Number(s.amount))}
                     {s.note && <small> · {s.note}</small>}
                   </span>
                 </div>
@@ -236,7 +242,10 @@ export function SettlePage({
             requestedByYou.map((s) => (
               <div key={s.id} className="settle-review-card">
                 <div className="settle-review-info">
-                  <span className="transfer-avatar" style={{ background: "#f7bf6d" }}>
+                  <span
+                    className="transfer-avatar"
+                    style={{ background: "#f7bf6d" }}
+                  >
                     {s.from_name.slice(0, 1)}
                   </span>
                   <span>
@@ -273,7 +282,10 @@ export function SettlePage({
           {completed.map((s) => (
             <div key={s.id} className="settle-review-card completed">
               <div className="settle-review-info">
-                <span className="transfer-avatar" style={{ background: "#b7f36b" }}>
+                <span
+                  className="transfer-avatar"
+                  style={{ background: "#b7f36b" }}
+                >
                   <CheckCircle2 size={14} />
                 </span>
                 <span>
@@ -283,8 +295,7 @@ export function SettlePage({
                 </span>
               </div>
               <span className="settle-status-badge confirmed">
-                <CheckCircle2 size={13} />{" "}
-                {s.payment_reference || "Confirmed"}
+                <CheckCircle2 size={13} /> {s.payment_reference || "Confirmed"}
               </span>
             </div>
           ))}
@@ -314,7 +325,10 @@ export function SettlePage({
               key={`${transfer.from_user}-${transfer.to_user}`}
               className="transfer-row"
             >
-              <span className="transfer-avatar" style={{ background: "#8dd8ff" }}>
+              <span
+                className="transfer-avatar"
+                style={{ background: "#8dd8ff" }}
+              >
                 {transfer.to_name.slice(0, 1)}
               </span>
               <span>

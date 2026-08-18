@@ -8,6 +8,7 @@ export type View =
   | "budgets"
   | "documents"
   | "activity"
+  | "recurring"
   | "quick-access"
   | "settings";
 export type SplitMode = "Equal" | "Exact" | "Percentage";
