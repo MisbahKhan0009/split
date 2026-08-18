@@ -68,6 +68,7 @@ import {
   type ChatConnection,
   type GroupMemberDTO,
   type MessageDTO,
+  type ProfileDTO,
 } from "./lib/api";
 
 const money = (value: number) => `৳ ${value.toLocaleString("en-BD")}`;
@@ -267,6 +268,8 @@ function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState<Member | null>(null);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [profile, setProfile] = useState<ProfileDTO | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [chatTheme, setChatTheme] = useState("default");
   const [query, setQuery] = useState("");
@@ -295,6 +298,7 @@ function App() {
   const [userDashboard, setUserDashboard] = useState<
     import("./lib/api").UserDashboard | null
   >(null);
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState<Date | null>(null);
   const [connectedPolls, setConnectedPolls] = useState<
     import("./lib/api").Poll[]
   >([]);
@@ -395,17 +399,45 @@ function App() {
     setAvailableGroups([]);
     setActiveGroup(emptyGroup);
     setUserDashboard(null);
+    setProfile(null);
+    setProfileImage(undefined);
+    setShowAccountMenu(false);
     setActiveView("dashboard");
     setShowAuth(false);
     setShowLanding(false);
     notify(`Welcome to SplitWise+, ${payload.user.display_name}.`);
   };
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await api.revokeCurrentSession();
+    } catch {
+      // Local sign-out still completes if the current token has expired.
+    }
     clearSession();
     setAuthUser(null);
+    setProfile(null);
+    setProfileImage(undefined);
+    setShowAccountMenu(false);
     setShowLanding(true);
     setShowAuth(false);
     notify("You have been signed out.");
+  };
+  const updateProfile = async (payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>) => {
+    const nextProfile = await api.updateProfile(payload);
+    setProfile(nextProfile);
+    setProfileImage(nextProfile.avatar ?? undefined);
+    if (nextProfile.theme === "light" || nextProfile.theme === "dark")
+      setTheme(nextProfile.theme);
+    setChatTheme(nextProfile.theme || "default");
+    notify("Settings saved to your account.");
+  };
+  const uploadProfilePicture = async (file: File) => {
+    const body = new FormData();
+    body.append("avatar", file);
+    const nextProfile = await api.updateProfile(body);
+    setProfile(nextProfile);
+    setProfileImage(nextProfile.avatar ?? undefined);
+    notify("Profile picture updated.");
   };
   const navigate = (view: View) => {
     setActiveView(view);
@@ -451,8 +483,11 @@ function App() {
     }
   };
   const refreshDashboard = async () => {
+    if (!getAccessToken()) return;
     try {
-      setUserDashboard(await api.dashboard());
+      const snapshot = await api.dashboard();
+      setUserDashboard(snapshot);
+      setDashboardUpdatedAt(new Date());
     } catch (requestError) {
       notify(
         requestError instanceof Error
@@ -485,6 +520,7 @@ function App() {
     setActiveGroup(group);
     setShowGroupCreate(false);
     setActiveView("overview");
+    await refreshDashboard();
     notify(`Created ${group.name}.`);
   };
   const hasGroups = availableGroups.length > 0;
@@ -570,7 +606,12 @@ function App() {
     Promise.all([
       refreshGroups(),
       refreshInvitations(),
-      api.profile().then((profile) => setChatTheme(profile.theme || "default")),
+      api.profile().then((nextProfile) => {
+        setProfile(nextProfile);
+        setProfileImage(nextProfile.avatar ?? undefined);
+        setChatTheme(nextProfile.theme || "default");
+        setTheme(nextProfile.theme === "light" ? "light" : "dark");
+      }),
       refreshDashboard(),
     ]).catch((requestError) =>
       notify(
@@ -580,6 +621,19 @@ function App() {
       ),
     );
   }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshDashboard();
+    };
+    const interval = window.setInterval(refreshWhenVisible, 10000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [authUser?.id]);
 
   useEffect(() => {
     if (activeView !== "chat" || !isBackendGroup) return;
@@ -758,6 +812,7 @@ function App() {
           })),
         });
         await loadConnectedGroup(activeGroup.id);
+        await refreshDashboard();
       } catch (requestError) {
         notify(
           requestError instanceof Error
@@ -989,7 +1044,18 @@ function App() {
         }}
         onOpenPalette={() => setShowPalette(true)}
         profileImage={profileImage ?? currentMember.profile.avatarUrl}
-        onOpenProfile={() => setShowProfile(currentMember)}
+        profile={profile}
+        accountMenuOpen={showAccountMenu}
+        onToggleAccountMenu={() => setShowAccountMenu((value) => !value)}
+        onOpenSettings={() => {
+          setShowAccountMenu(false);
+          navigate("settings");
+        }}
+        onToggleTheme={() => {
+          const nextTheme = theme === "dark" ? "light" : "dark";
+          setTheme(nextTheme);
+          void updateProfile({ theme: nextTheme });
+        }}
         onSignOut={handleSignOut}
         authUser={authUser}
       />
@@ -1005,7 +1071,11 @@ function App() {
             setShowNotifications((value) => !value);
             void refreshInvitations();
           }}
-          onTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onTheme={() => {
+            const nextTheme = theme === "dark" ? "light" : "dark";
+            setTheme(nextTheme);
+            void updateProfile({ theme: nextTheme });
+          }}
           theme={theme}
         />
         {showNotifications && (
@@ -1020,9 +1090,25 @@ function App() {
           />
         )}
         <div className="page-content">
+          {activeView === "settings" && authUser && (
+            <SettingsPage
+              authUser={authUser}
+              profile={profile}
+              profileImage={profileImage}
+              theme={theme}
+              onProfileSaved={updateProfile}
+              onAvatarUpload={uploadProfilePicture}
+              onThemeChange={(nextTheme) => {
+                setTheme(nextTheme);
+                void updateProfile({ theme: nextTheme });
+              }}
+              onSignOut={handleSignOut}
+            />
+          )}
           {activeView === "dashboard" && (
             <UserDashboardView
               dashboard={userDashboard}
+              dashboardUpdatedAt={dashboardUpdatedAt}
               onCreateGroup={() => setShowGroupCreate(true)}
               onNavigate={navigate}
             />
@@ -1062,7 +1148,10 @@ function App() {
               polls={connectedPolls}
               recurring={connectedRecurring}
               currentUserId={authUser?.id ?? 0}
-              onSync={() => loadConnectedGroup(activeGroup.id)}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
               onToast={notify}
             />
           )}
@@ -1085,11 +1174,15 @@ function App() {
               typingNames={Object.values(typingUsers)}
               onReact={addReaction}
               onMarkRead={markCurrentThreadRead}
-              onOpenProfile={(id) =>
+              onOpenProfile={(id) => {
+                if (id === String(authUser?.id) || id === "me") {
+                  navigate("settings");
+                  return;
+                }
                 setShowProfile(
                   activeMembers.find((member) => member.id === id) ?? null,
-                )
-              }
+                );
+              }}
               onOpenDirect={openDirect}
               chatTheme={chatTheme}
               onThemeChange={changeChatTheme}
@@ -1106,7 +1199,10 @@ function App() {
               recurring={connectedRecurring}
               events={connectedEvents}
               polls={connectedPolls}
-              onSync={() => loadConnectedGroup(activeGroup.id)}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
               onToast={notify}
             />
           )}
@@ -1168,6 +1264,7 @@ function App() {
             await api.acceptInvitation(id);
             await refreshGroups();
             await refreshInvitations();
+            await refreshDashboard();
             notify("Invitation accepted and membership updated.");
           }}
           onDecline={async (id) => {
@@ -1184,6 +1281,7 @@ function App() {
             await api.acceptInvitation(id);
             await refreshGroups();
             await refreshInvitations();
+            await refreshDashboard();
             notify("Invitation accepted and membership updated.");
           }}
           onDecline={async (id) => {
@@ -1203,7 +1301,9 @@ function App() {
           }}
         />
       )}
-      {showProfile && (
+      {showProfile &&
+        showProfile.id !== String(authUser?.id) &&
+        showProfile.id !== "me" && (
         <ProfileDrawer
           member={showProfile}
           isSelf={
@@ -1243,10 +1343,12 @@ function App() {
 
 function UserDashboardView({
   dashboard,
+  dashboardUpdatedAt,
   onCreateGroup,
   onNavigate,
 }: {
   dashboard: import("./lib/api").UserDashboard | null;
+  dashboardUpdatedAt: Date | null;
   onCreateGroup: () => void;
   onNavigate: (view: View) => void;
 }) {
@@ -1291,6 +1393,14 @@ function UserDashboardView({
           <p>
             Your personal view of shared money, balances, and group activity.
           </p>
+          <small className="dashboard-sync-status">
+            <span className="live-dot" /> Backend synced {dashboardUpdatedAt
+              ? dashboardUpdatedAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "just now"} · refreshes every 10s
+          </small>
         </div>
         <button
           className="outline-button"
@@ -2485,6 +2595,398 @@ function Landing({
     </div>
   );
 }
+function AccountMenu({
+  profile,
+  onOpenSettings,
+  onToggleTheme,
+  onSignOut,
+}: {
+  profile: ProfileDTO | null;
+  onOpenSettings: () => void;
+  onToggleTheme: () => void;
+  onSignOut: () => void;
+}) {
+  const isLight = profile?.theme === "light";
+  return (
+    <div className="account-menu" role="menu">
+      <div className="account-menu-heading">
+        <span className="muted-label">ACCOUNT</span>
+        <small>{profile?.status || "Available"}</small>
+      </div>
+      <button type="button" onClick={onToggleTheme}>
+        <Sun size={15} />
+        <span>{isLight ? "Use dark theme" : "Use light theme"}</span>
+        <span className="menu-value">{isLight ? "Light" : "Dark"}</span>
+      </button>
+      <button type="button" onClick={onOpenSettings}>
+        <Settings2 size={15} />
+        <span>Settings</span>
+        <ChevronDown size={14} className="menu-chevron" />
+      </button>
+      <div className="account-menu-divider" />
+      <button type="button" className="account-menu-danger" onClick={onSignOut}>
+        <LogIn size={15} />
+        <span>Sign out</span>
+      </button>
+    </div>
+  );
+}
+
+function SettingsPage({
+  authUser,
+  profile,
+  profileImage,
+  theme,
+  onProfileSaved,
+  onAvatarUpload,
+  onThemeChange,
+  onSignOut,
+}: {
+  authUser: AuthUser;
+  profile: ProfileDTO | null;
+  profileImage?: string;
+  theme: "dark" | "light";
+  onProfileSaved: (
+    payload: Partial<Pick<ProfileDTO, "bio" | "status" | "theme">>,
+  ) => Promise<void>;
+  onAvatarUpload: (file: File) => Promise<void>;
+  onThemeChange: (theme: "dark" | "light") => void;
+  onSignOut: () => void | Promise<void>;
+}) {
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [status, setStatus] = useState(profile?.status ?? "Available");
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [activityItems, setActivityItems] = useState<import("./lib/api").AccountActivityItem[]>([]);
+  const [sessions, setSessions] = useState<import("./lib/api").AccountSession[]>([]);
+  const [accountDataLoading, setAccountDataLoading] = useState(true);
+  const [accountDataError, setAccountDataError] = useState("");
+  const [sessionAction, setSessionAction] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const initials =
+    profile?.initials ||
+    authUser.display_name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+
+  useEffect(() => {
+    setBio(profile?.bio ?? "");
+    setStatus(profile?.status ?? "Available");
+  }, [profile?.bio, profile?.status]);
+
+  const loadAccountData = async () => {
+    setAccountDataLoading(true);
+    setAccountDataError("");
+    try {
+      const [nextActivity, nextSessions] = await Promise.all([
+        api.accountActivity(),
+        api.accountSessions(),
+      ]);
+      setActivityItems(nextActivity);
+      setSessions(nextSessions);
+    } catch (requestError) {
+      setAccountDataError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not load account activity.",
+      );
+    } finally {
+      setAccountDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAccountData();
+  }, []);
+
+  const revokeSession = async (sessionId: string, current: boolean) => {
+    setSessionAction(sessionId);
+    try {
+      if (current) {
+        await onSignOut();
+        return;
+      }
+      await api.revokeSession(sessionId);
+      await loadAccountData();
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke this session.");
+    } finally {
+      setSessionAction("");
+    }
+  };
+
+  const revokeOtherSessions = async () => {
+    setSessionAction("all");
+    try {
+      await api.revokeAllSessions();
+      await loadAccountData();
+    } catch (requestError) {
+      window.alert(requestError instanceof Error ? requestError.message : "Could not revoke other sessions.");
+    } finally {
+      setSessionAction("");
+    }
+  };
+
+  const saveProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await onProfileSaved({ bio: bio.trim(), status: status.trim() || "Available" });
+    } catch (requestError) {
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not save your profile settings.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      window.alert("Choose an image file for your profile picture.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert("Profile pictures must be 5 MB or smaller.");
+      return;
+    }
+    setUploading(true);
+    try {
+      await onAvatarUpload(file);
+    } catch (requestError) {
+      window.alert(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not upload your profile picture.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <section className="page-section settings-page">
+      <div className="page-header settings-header">
+        <div>
+          <div className="eyebrow">
+            <span className="eyebrow-dot" /> ACCOUNT SETTINGS
+          </div>
+          <h1>Make this workspace yours.</h1>
+          <p>Update your profile, appearance, and account preferences.</p>
+        </div>
+        <span className="settings-security-note">
+          <Check size={14} /> Changes save to your account
+        </span>
+      </div>
+      <div className="settings-grid">
+        <form className="glass-card settings-card" onSubmit={saveProfile}>
+          <div className="section-heading">
+            <div>
+              <span className="muted-label">PROFILE</span>
+              <h2>Your presence</h2>
+            </div>
+          </div>
+          <div className="settings-profile-hero">
+            <button
+              type="button"
+              className="settings-avatar-button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              title="Upload profile picture"
+            >
+              <Avatar
+                member={{ initials, color: "#b7f36b" }}
+                size="lg"
+                avatarUrl={profileImage}
+              />
+              <span className="settings-avatar-badge">
+                <Image size={13} />
+              </span>
+            </button>
+            <div>
+              <strong>{authUser.display_name}</strong>
+              <small>@{authUser.username}</small>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? "Uploading…" : "Change profile picture"}
+              </button>
+            </div>
+          </div>
+          <input
+            ref={fileRef}
+            hidden
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={handleUpload}
+          />
+          <label className="field-label">
+            Status
+            <input
+              value={status}
+              maxLength={80}
+              onChange={(event) => setStatus(event.target.value)}
+              placeholder="Available"
+            />
+          </label>
+          <label className="field-label">
+            About you
+            <textarea
+              value={bio}
+              maxLength={240}
+              onChange={(event) => setBio(event.target.value)}
+              placeholder="Tell your group a little about you"
+              rows={4}
+            />
+          </label>
+          <div className="settings-form-footer">
+            <small>{bio.length}/240 characters</small>
+            <button className="primary-button" type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save profile"}
+            </button>
+          </div>
+        </form>
+        <div className="settings-column">
+          <div className="glass-card settings-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">APPEARANCE</span>
+                <h2>Theme</h2>
+              </div>
+              <Palette size={18} />
+            </div>
+            <p className="settings-description">
+              Choose the workspace appearance used across your signed-in sessions.
+            </p>
+            <div className="theme-options">
+              {(["dark", "light"] as const).map((option) => (
+                <button
+                  type="button"
+                  key={option}
+                  className={`theme-option ${theme === option ? "selected" : ""}`}
+                  onClick={() => onThemeChange(option)}
+                >
+                  <span className={`theme-preview ${option}`} />
+                  <span>
+                    <strong>{option === "dark" ? "Dark glass" : "Light glass"}</strong>
+                    <small>{theme === option ? "Active" : "Use this theme"}</small>
+                  </span>
+                  {theme === option && <Check size={15} />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">SECURITY</span>
+                <h2>Active sessions</h2>
+              </div>
+              <button type="button" className="icon-button" onClick={() => void loadAccountData()} title="Refresh sessions">
+                <Activity size={16} />
+              </button>
+            </div>
+            <p className="settings-description">Review where your account is signed in and revoke anything unfamiliar.</p>
+            {accountDataError && <p className="settings-inline-error">{accountDataError}</p>}
+            {accountDataLoading ? (
+              <p className="settings-empty-state">Loading active sessions…</p>
+            ) : sessions.length ? (
+              <div className="session-list">
+                {sessions.map((session) => (
+                  <div className="session-row" key={session.id}>
+                    <div className="session-icon"><UserRound size={16} /></div>
+                    <div className="session-copy">
+                      <strong>{session.device_label}{session.is_current ? " · This device" : ""}</strong>
+                      <small>Last active {new Date(session.last_seen_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                      <small>{session.ip_address || "IP unavailable"}</small>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-button session-revoke-button"
+                      disabled={sessionAction === session.id}
+                      onClick={() => void revokeSession(session.id, session.is_current)}
+                    >
+                      {sessionAction === session.id ? "Revoking…" : session.is_current ? "Sign out" : "Revoke"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="settings-empty-state">No active sessions found.</p>
+            )}
+            {sessions.some((session) => !session.is_current) && (
+              <button type="button" className="outline-button settings-wide-button" disabled={sessionAction === "all"} onClick={() => void revokeOtherSessions()}>
+                {sessionAction === "all" ? "Revoking…" : "Revoke all other sessions"}
+              </button>
+            )}
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">ACCOUNT</span>
+                <h2>Account details</h2>
+              </div>
+              <UserRound size={18} />
+            </div>
+            <div className="settings-detail-row"><span>Name</span><strong>{authUser.display_name}</strong></div>
+            <div className="settings-detail-row"><span>Username</span><strong>@{authUser.username}</strong></div>
+            <div className="settings-detail-row"><span>Email</span><strong>{authUser.email || "Not added"}</strong></div>
+            <p className="settings-description">Your account identity is managed through the secure sign-in flow.</p>
+          </div>
+          <div className="glass-card settings-card account-details-card">
+            <div className="section-heading">
+              <div>
+                <span className="muted-label">AUDIT TRAIL</span>
+                <h2>Recent activity</h2>
+              </div>
+              <Activity size={18} />
+            </div>
+            <p className="settings-description">A private record of sign-ins, profile changes, and session actions.</p>
+            {accountDataLoading ? (
+              <p className="settings-empty-state">Loading activity…</p>
+            ) : activityItems.length ? (
+              <div className="activity-log-list">
+                {activityItems.slice(0, 8).map((item) => (
+                  <div className="settings-activity-row" key={item.id}>
+                    <span className="activity-log-dot" />
+                    <div>
+                      <strong>{item.description}</strong>
+                      <small>{item.device_label} · {new Date(item.created_at).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="settings-empty-state">No account activity has been recorded yet.</p>
+            )}
+          </div>
+          <div className="glass-card settings-card danger-card">
+            <div>
+              <span className="muted-label">SESSION</span>
+              <h2>Sign out everywhere</h2>
+              <p className="settings-description">End this browser session and return to the public landing page.</p>
+            </div>
+            <button type="button" className="outline-button danger-button" onClick={onSignOut}>
+              <LogIn size={15} /> Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Sidebar({
   activeView,
   onNavigate,
@@ -2498,7 +3000,11 @@ function Sidebar({
   onOpenInvite,
   onOpenPalette,
   profileImage,
-  onOpenProfile,
+  profile,
+  accountMenuOpen,
+  onToggleAccountMenu,
+  onOpenSettings,
+  onToggleTheme,
   onSignOut,
   authUser,
 }: {
@@ -2514,7 +3020,11 @@ function Sidebar({
   onOpenInvite: () => void;
   onOpenPalette: () => void;
   profileImage?: string;
-  onOpenProfile: () => void;
+  profile: ProfileDTO | null;
+  accountMenuOpen: boolean;
+  onToggleAccountMenu: () => void;
+  onOpenSettings: () => void;
+  onToggleTheme: () => void;
   onSignOut: () => void;
   authUser: AuthUser | null;
 }) {
@@ -2646,14 +3156,11 @@ function Sidebar({
           <span>Quick actions</span>
           <kbd>⌘ K</kbd>
         </button>
-        <button type="button" className="side-settings">
-          <Settings2 size={16} />
-          <span>Settings</span>
-        </button>
         <button
           type="button"
           className="profile profile-button"
-          onClick={onOpenProfile}
+          onClick={onToggleAccountMenu}
+          aria-expanded={accountMenuOpen}
         >
           <Avatar
             member={{ initials: accountInitials, color: "#b7f36b" }}
@@ -2665,10 +3172,14 @@ function Sidebar({
           </span>
           <MoreHorizontal size={16} />
         </button>
-        <button type="button" className="side-signout" onClick={onSignOut}>
-          <LogIn size={15} />
-          <span>Sign out</span>
-        </button>
+        {accountMenuOpen && (
+          <AccountMenu
+            profile={profile}
+            onOpenSettings={onOpenSettings}
+            onToggleTheme={onToggleTheme}
+            onSignOut={onSignOut}
+          />
+        )}
       </div>
     </aside>
   );

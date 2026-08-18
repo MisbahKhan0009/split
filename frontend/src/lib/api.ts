@@ -21,6 +21,24 @@ export type AuthUser = {
   display_name: string;
 };
 export type AuthResponse = { access: string; refresh: string; user: AuthUser };
+export type AccountActivityItem = {
+  id: number;
+  action: string;
+  description: string;
+  device_label: string;
+  ip_address: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+};
+export type AccountSession = {
+  id: string;
+  device_label: string;
+  ip_address: string | null;
+  user_agent: string;
+  created_at: string;
+  last_seen_at: string;
+  is_current: boolean;
+};
 export type ProfileDTO = {
   name: string;
   initials: string;
@@ -417,6 +435,11 @@ export const api = {
       body: JSON.stringify({}),
     }),
   profile: () => request<ProfileDTO>("/profiles/me/"),
+  accountActivity: () => request<AccountActivityItem[]>("/account/activity/"),
+  accountSessions: () => request<AccountSession[]>("/account/sessions/"),
+  revokeCurrentSession: () => request<{ detail: string }>("/account/sessions/current/revoke/", { method: "POST", body: JSON.stringify({}) }),
+  revokeSession: (id: string) => request<{ detail: string }>(`/account/sessions/${id}/revoke/`, { method: "POST", body: JSON.stringify({}) }),
+  revokeAllSessions: () => request<{ detail: string; revoked_count: number }>("/account/sessions/revoke-all/", { method: "POST", body: JSON.stringify({}) }),
   updateProfile: (payload: ProfileUpdate) =>
     request<ProfileDTO>("/profiles/me/", {
       method: "PATCH",

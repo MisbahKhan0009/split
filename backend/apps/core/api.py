@@ -14,6 +14,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .auth import record_account_activity
 from .chat import (
     broadcast_message_event,
     is_active_member,
@@ -1196,6 +1197,13 @@ class ProfileViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(profile, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            record_account_activity(
+                request.user,
+                "profile_update",
+                "Updated profile settings",
+                request,
+                {"fields": list(serializer.validated_data.keys())},
+            )
         return Response(self.get_serializer(profile).data)
 
 
