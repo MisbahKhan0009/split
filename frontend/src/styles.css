@@ -6620,3 +6620,71 @@ h2 em {
 .recurring-list .task-person:first-child {
   border-top: 0;
 }
+
+/* Recurring expenses dedicated page */
+.recurring-page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.recurring-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+.recurring-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.recurring-card-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.recurring-card-title strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recurring-card-title small {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: capitalize;
+}
+.recurring-card-amount {
+  flex-shrink: 0;
+  color: var(--lime);
+  font: 600 14px "Space Grotesk";
+}
+.recurring-card-body {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.recurring-card-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.recurring-card-detail > span {
+  color: var(--dim);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.recurring-card-detail > strong {
+  color: var(--text);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.recurring-generate {
+  align-self: flex-start;
+}

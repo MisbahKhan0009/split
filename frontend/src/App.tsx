@@ -54,6 +54,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ConnectedFeaturePanel } from "./pages/ConnectedFeaturePanel";
 import { BudgetsPage } from "./pages/BudgetsPage";
+import { RecurringPage } from "./pages/RecurringPage";
 import { DocumentsPage } from "./pages/DocumentsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 
@@ -1089,6 +1090,18 @@ function App() {
             <BudgetsPage
               activeGroup={activeGroup}
               budgets={connectedBudgets}
+              onSync={async () => {
+                await loadConnectedGroup(activeGroup.id);
+                await refreshDashboard();
+              }}
+              onToast={notify}
+            />
+          )}
+          {hasGroups && activeView === "recurring" && (
+            <RecurringPage
+              activeGroup={activeGroup}
+              recurring={connectedRecurring}
+              currentUserId={authUser?.id ?? 0}
               onSync={async () => {
                 await loadConnectedGroup(activeGroup.id);
                 await refreshDashboard();

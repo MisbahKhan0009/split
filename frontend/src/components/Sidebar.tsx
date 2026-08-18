@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Plus,
   Receipt,
+  Repeat,
   Split,
   Sparkles,
   Target,
@@ -175,6 +176,12 @@ export function Sidebar({
           label="Budgets"
           active={activeView === "budgets"}
           onClick={() => onNavigate("budgets")}
+        />
+        <NavButton
+          icon={<Repeat size={17} />}
+          label="Recurring"
+          active={activeView === "recurring"}
+          onClick={() => onNavigate("recurring")}
         />
         <NavButton
           icon={<FileText size={17} />}
